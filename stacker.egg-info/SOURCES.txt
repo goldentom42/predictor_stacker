@@ -1,0 +1,9 @@
+stacker/__init__.py
+stacker/stacker.py
+stacker.egg-info/PKG-INFO
+stacker.egg-info/SOURCES.txt
+stacker.egg-info/dependency_links.txt
+stacker.egg-info/not-zip-safe
+stacker.egg-info/requires.txt
+stacker.egg-info/top_level.txt
+stacker/test/test_stacker.py
