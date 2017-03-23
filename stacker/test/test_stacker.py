@@ -38,22 +38,22 @@ class TestPredictorStacker(unittest.TestCase):
 
     def test_add_predictors_one_file(self):
         stacker = PredictorStacker()
-        stacker.add_predictors(files=['test/noid_OOF_predictions_2.csv'])
+        stacker.add_predictors(files=['noid_OOF_predictions_2.csv'])
         self.assertEqual(len(stacker.target), 188318)
         self.assertEqual(len(stacker.predictors), 188318)
         self.assertEqual(stacker.predictors.shape[1], 20)
 
     def test_add_predictors_two_files(self):
         stacker = PredictorStacker()
-        stacker.add_predictors(files=['test/noid_OOF_predictions_2.csv',
-                                      'test/noid_OOF_predictions_3.csv'])
+        stacker.add_predictors(files=['noid_OOF_predictions_2.csv',
+                                      'noid_OOF_predictions_3.csv'])
         self.assertEqual(len(stacker.target), 188318)
         self.assertEqual(len(stacker.predictors), 188318)
         self.assertEqual(stacker.predictors.shape[1], 21)
 
     def test_add_predictors_file_error_raise_ValueError(self):
         stacker = PredictorStacker()
-        self.assertRaises(ValueError, stacker.add_predictors, files=['test/does_not_exist.csv'])
+        self.assertRaises(ValueError, stacker.add_predictors, files=['does_not_exist.csv'])
 
     def test_add_predictors_not_a_string_raise_TypeError(self):
         stacker = PredictorStacker()
@@ -63,14 +63,14 @@ class TestPredictorStacker(unittest.TestCase):
         stacker = PredictorStacker()
         self.assertRaises(ValueError,
                           stacker.add_predictors,
-                          files=['test/noid_OOF_predictions_1.csv',
-                                 'test/noid_OOF_predictions_2.csv'])
+                          files=['noid_OOF_predictions_1.csv',
+                                 'noid_OOF_predictions_2.csv'])
 
     def test_fit_stacker_one_bag(self):
         stacker = PredictorStacker(metric=metric_mae)
-        stacker.add_predictors(files=['test/noid_OOF_predictions_2.csv',
-                                      'test/noid_OOF_predictions_3.csv',
-                                      'test/noid_OOF_predictions_4.csv'])
+        stacker.add_predictors(files=['noid_OOF_predictions_2.csv',
+                                      'noid_OOF_predictions_3.csv',
+                                      'noid_OOF_predictions_4.csv'])
         self.assertEqual(len(stacker.target), 188318)
         self.assertEqual(len(stacker.predictors), 188318)
         self.assertEqual(stacker.predictors.shape[1], 22)
@@ -80,21 +80,21 @@ class TestPredictorStacker(unittest.TestCase):
 
     def test_fit_stacker_one_bag_rmse(self):
         stacker = PredictorStacker(metric=metric_rmse)
-        stacker.add_predictors(files=['test/noid_OOF_predictions_2.csv',
-                                      'test/noid_OOF_predictions_3.csv',
-                                      'test/noid_OOF_predictions_4.csv'])
+        stacker.add_predictors(files=['noid_OOF_predictions_2.csv',
+                                      'noid_OOF_predictions_3.csv',
+                                      'noid_OOF_predictions_4.csv'])
         self.assertEqual(len(stacker.target), 188318)
         self.assertEqual(len(stacker.predictors), 188318)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit(max_iter=20, n_bags=1, max_predictors=1., max_samples=1., verbose=2)
-        self.assertAlmostEqual(stacker.score, 1136.4316755211291, places=4)
-        self.assertAlmostEqual(stacker.mean_score, 1137.2460719022001, places=4)
+        self.assertAlmostEqual(stacker.score, 1940.1115566433118, places=4)
+        self.assertAlmostEqual(stacker.mean_score, 1942.3928913, places=4)
 
     def test_fit_stacker_ten_bags(self):
         stacker = PredictorStacker(metric=metric_mae)
-        stacker.add_predictors(files=['test/noid_OOF_predictions_2.csv',
-                                      'test/noid_OOF_predictions_3.csv',
-                                      'test/noid_OOF_predictions_4.csv'])
+        stacker.add_predictors(files=['noid_OOF_predictions_2.csv',
+                                      'noid_OOF_predictions_3.csv',
+                                      'noid_OOF_predictions_4.csv'])
         self.assertEqual(len(stacker.target), 188318)
         self.assertEqual(len(stacker.predictors), 188318)
         self.assertEqual(stacker.predictors.shape[1], 22)
