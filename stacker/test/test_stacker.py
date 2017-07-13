@@ -1,8 +1,8 @@
 """Test suite for PredictorStacker class
-The suite is based on unittest and can be run from project root with
-prompt$python -m unittest -v test.test_stacker
+The suite is based on unittest and can be run from the test folder with
+prompt$python -m unittest -v test_stacker
 Coverage measures can be performed with
-prompt$coverage run -m unittest -v test.test_stacker
+prompt$coverage run -m unittest -v test_stacker
 prompt$coverage html
 """
 
