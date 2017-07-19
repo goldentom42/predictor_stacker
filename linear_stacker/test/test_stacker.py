@@ -52,16 +52,16 @@ class TestPredictorStacker(unittest.TestCase):
     def test_add_predictors_one_file(self):
         stacker = LinearPredictorStacker(metric=metric_rmse)
         stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv'])
-        self.assertEqual(len(stacker.target), 188318)
-        self.assertEqual(len(stacker.predictors), 188318)
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 20)
 
     def test_add_predictors_two_files(self):
         stacker = LinearPredictorStacker(metric=metric_rmse)
         stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
-                                      'noid_OOF_predictions_3.csv'])
-        self.assertEqual(len(stacker.target), 188318)
-        self.assertEqual(len(stacker.predictors), 188318)
+                                                  'noid_OOF_predictions_3.csv'])
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 21)
 
     def test_add_predictors_file_error_raise_ValueError(self):
@@ -90,12 +90,12 @@ class TestPredictorStacker(unittest.TestCase):
         stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
                                                   'noid_OOF_predictions_3.csv',
                                                   'noid_OOF_predictions_4.csv'])
-        self.assertEqual(len(stacker.target), 188318)
-        self.assertEqual(len(stacker.predictors), 188318)
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1136.4316755211291, places=4)
-        self.assertAlmostEqual(stacker.mean_score, 1137.2460719022001, places=4)
+        self.assertAlmostEqual(stacker.score, 1187.1916616561432, places=4)
+        self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_fit_regression_stacker_rmse_no_bagging(self):
         """Test regression stacking with metric root mean squared error, no bagging"""
@@ -108,12 +108,12 @@ class TestPredictorStacker(unittest.TestCase):
         stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
                                                   'noid_OOF_predictions_3.csv',
                                                   'noid_OOF_predictions_4.csv'])
-        self.assertEqual(len(stacker.target), 188318)
-        self.assertEqual(len(stacker.predictors), 188318)
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1940.1115566433118, places=4)
-        self.assertAlmostEqual(stacker.mean_score, 1942.3928913, places=4)
+        self.assertAlmostEqual(stacker.score, 2030.5021340510675, places=4)
+        self.assertAlmostEqual(stacker.mean_score, 2032.2110846499691, places=4)
 
     def test_fit_regression_stacker_mae_ten_bags(self):
         """Test regression stacking with metric mean absolute error and 20 bags"""
@@ -126,12 +126,12 @@ class TestPredictorStacker(unittest.TestCase):
         stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
                                                   'noid_OOF_predictions_3.csv',
                                                   'noid_OOF_predictions_4.csv'])
-        self.assertEqual(len(stacker.target), 188318)
-        self.assertEqual(len(stacker.predictors), 188318)
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1136.9059858227927, places=4)
-        self.assertAlmostEqual(stacker.mean_score, 1137.2460719022001, places=4)
+        self.assertAlmostEqual(stacker.score, 1187.6537373418842, places=4)
+        self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_fit_swapping_regression_stacker_no_bagging(self):
         """Test regression stacking with metric mean absolute error, no bagging"""
@@ -145,12 +145,12 @@ class TestPredictorStacker(unittest.TestCase):
         stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
                                                   'noid_OOF_predictions_3.csv',
                                                   'noid_OOF_predictions_4.csv'])
-        self.assertEqual(len(stacker.target), 188318)
-        self.assertEqual(len(stacker.predictors), 188318)
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1128.2264332661346, places=4)
-        self.assertAlmostEqual(stacker.mean_score, 1137.2460719022001, places=4)
+        self.assertAlmostEqual(stacker.score, 1174.2389336325261, places=4)
+        self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_unsupported_algorithm(self):
         """Test unsupported algorithm"""
