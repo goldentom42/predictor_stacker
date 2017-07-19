@@ -8,7 +8,6 @@ PACKAGES = [
 setup(name='linear_stacker',
       version='0.1',
       description='Linear Predictor Stacker',
-      # url='',
       author='Olivier Grellier',
       author_email='goldentom42@gmail.com',
       license='Apache 2.0',
