@@ -3,25 +3,75 @@ import pandas as pd
 import numpy as np
 
 
-class PredictorStacker:
-    def __init__(self, metric=None, num_class=1):
+class LinearPredictorStacker(object):
+    def __init__(self,
+                 metric=None,
+                 maximize=False,
+                 algo='standard',
+                 max_predictors=1.0,
+                 max_samples=1.0,
+                 n_bags=1,
+                 max_iter=10,
+                 step=1,
+                 verbose=0,
+                 verb_round=1,
+                 normed_weights=True,
+                 eps=1e-5,
+                 seed=None):
+        """
+        Init a LinearPredictorStacker
+        :param metric: metrics to be used to optimize linear mix of predictors
+        :param maximize: set to True if optimizer has to maximize the metric, set to False otherwise
+        :param algo: type of optimization, can be 'standard' or 'swapping'
+        :param max_predictors: float default to 1.0, ratio of predictors used for each bag
+        :param max_samples: float default to 1.0, ratio of samples used for each bag
+        :param n_bags: number of bags, defaults to 1 (i.e. no bagging)
+        :param max_iter: maximum number of iterations for the optimization process
+        :param step: step size for the optimizer, defaults to 1
+            .. code:: python
+
+                candidate = prediction +/- step * i_th_predictor
+
+        :param verbose: overall verbosity of the optimization process, defaults to 0
+        :param verb_round: if verbose is more than 1, verb_round sets the number of rounds after which info is output
+        :param normed_weights: set to True if predictors' weights have to sum to 1, defaults to True
+        :param eps: tolerance for optimization improvement, defaults to 1e-5
+        :param seed: used to seed random processes
+        """
+
+        if metric is None:
+            raise ValueError('No metric has been provided')
+        if algo not in ['swapping', 'standard']:
+            raise ValueError('Algorithm must be either "standard" or "swapping"')
+
+        self.metric = metric
+        self.maximize = maximize
+        self.algo = algo
+        self.max_predictors = max_predictors
+        self.max_samples = max_samples
+        self.n_bags = n_bags
+        self.max_iter = max_iter
+        self.step = step
+        self.verbose = verbose
+        self.verb_round = verb_round
+        self.normed_weights = normed_weights
+        self.eps = eps
+        self.seed = seed
+
         self.predictors = None
         self.target = None
-        self.metric = metric
         self.score = None
         self.weights = None
         self.mean_score = None
-        self.num_class = num_class
 
-
-    def add_predictors(self, files=[]):
+    def add_predictors_by_filename(self, files=None):
         """
-        Add a list of file names to the stacker
+        Add a list of file names to the linear_stacker
         Files contain a minimum of 2 columns :
         - 1st column is the prediction (mandatory)
         - last column is the target (mandatory)
         If target column is not specified, target should be provided
-        when fitting the stacker
+        when fitting the linear_stacker
         :param files: list of file names containing predictions in csv format
         :return:
         """
@@ -46,11 +96,11 @@ class PredictorStacker:
             pred = pd.read_csv(f, delimiter=',')
 
             # Check number of columns is divided by num_class
-            if (len(pred.columns) - 1) % self.num_class != 0:
-                raise ValueError('file ' + f + ' does not contain enough classes')
+            # if (len(pred.columns) - 1) % self.num_class != 0:
+            #     raise ValueError('file ' + f + ' does not contain enough classes')
 
             # Check data shape : should contain all classes + target
-            if len(pred.shape) < self.num_class + 1:
+            if len(pred.shape) < 2:
                 # We don't have a target in the file
                 raise ValueError('file ' + f + ' should contain at least 2 columns (prediction and target)')
             else:
@@ -75,43 +125,45 @@ class PredictorStacker:
                     for feature in pred.columns[:-1]:
                         self.predictors[feature] = pred[feature]
 
-    def set_predictors_and_target(self, predictors, target):
+    def _check_predictors_and_target(self, predictors, target):
         # Check length
         if len(predictors) != len(target):
             raise ValueError('Target and predictors have different length')
         if len(target.shape) > 1:
             raise ValueError('Target contains more than one column')
-        if (np.sum(predictors.isnull().sum()) > 0):
+        if np.sum(predictors.isnull().sum()) > 0:
             raise ValueError('Predictors contain NaN')
-        if (target.isnull().sum() > 0):
+        if target.isnull().sum() > 0:
             raise ValueError('Target contain NaN')
-        if (predictors.shape[1] % num_class != 0):
-            raise ValueError('Predictors do not contain the expected number of classes')
         # Set predictors and target
         self.predictors = predictors
         self.target = np.array(target)
 
-    def fit(self,
-            sub_data=None,
-            max_predictors=1.,
-            max_samples=1.,
-            n_bags=1,
-            max_iter=10,
-            verbose=0,
-            verb_round=1,
-            step=1,
-            normed_weights=True,
-            eps=1e-5,
-            seed=24698537):
-        # Checks
-        if self.metric is None:
-            raise ValueError('a metric should be set before fitting')
-        if self.predictors is None:
-            raise ValueError('predictors not set before fitting')
-        if self.target is None:
-            raise ValueError('target not provided before fitting')
+    def fit(self, predictors=None, target=None):
 
-        # TODO this needs to accept several classes
+        # Check predictors and target
+        if (predictors is not None) and (target is not None):
+            self._check_predictors_and_target(predictors, target)
+        else:
+            # Predictors have been set using files
+            if self.predictors is None:
+                raise ValueError('predictors not set before fitting')
+            if self.target is None:
+                raise ValueError('target not provided before fitting')
+
+        # Check algo
+        if self.algo == 'standard':
+            self._standard_fit()
+        elif self.algo == 'swapping':
+            self._swapping_fit()
+
+    def _standard_fit(self):
+        """
+        Standard optimization process.
+
+        At each round each predictor is either added or subtracted to to the overall prediction and overall score
+        improvement is tested. The best operation is kept.
+        """
         # Compute mean score
         self.mean_score = self.metric(self.target, self.predictors.mean(axis=1).values)
 
@@ -119,8 +171,9 @@ class PredictorStacker:
         samp_indexes = np.arange(self.predictors.shape[0])
         pred_indexes = np.arange(self.predictors.shape[1])
 
-        # Set a seed
-        np.random.seed(seed)
+        # Set a seed if provided
+        if self.seed is not None:
+            np.random.seed(self.seed)
 
         # Init weights
         full_weights = np.zeros(self.predictors.shape[1])
@@ -129,14 +182,14 @@ class PredictorStacker:
         predictors = self.predictors.values
         features = self.predictors.columns
 
-        for bag in range(n_bags):
+        for bag in range(self.n_bags):
             # Shuffle indexes
             np.random.shuffle(samp_indexes)
             np.random.shuffle(pred_indexes)
 
             # Get ratioed predictors
-            nb_pred = int(self.predictors.shape[1] * max_predictors)
-            nb_samp = int(self.predictors.shape[0] * max_samples)
+            nb_pred = int(self.predictors.shape[1] * self.max_predictors)
+            nb_samp = int(self.predictors.shape[0] * self.max_samples)
             pred_idx = pred_indexes[:nb_pred]
             samp_idx = samp_indexes[:nb_samp]
 
@@ -144,13 +197,13 @@ class PredictorStacker:
             bag_target = self.target[samp_idx]
 
             # Init weights and prediction for current bag
-            if normed_weights:
+            if self.normed_weights:
                 weights = np.ones(nb_pred) * nb_pred
             else:
                 weights = np.zeros(nb_pred)
 
             prediction = np.zeros(nb_samp)
-            if normed_weights:
+            if self.normed_weights:
                 for i, weight in enumerate(weights):
                     prediction += weight * bag_predictors[:, i] / (np.sum(weights))
             else:
@@ -159,21 +212,21 @@ class PredictorStacker:
 
             # Set benchmark and print it
             benchmark = self.metric(bag_target, prediction)
-            if verbose >= 2:
+            if self.verbose >= 2:
                 print('Benchmark : ', benchmark)
 
             # Try to improve on the benchmark
             improve = True
-            iter = 0
-            while (improve and (iter < max_iter)):
+            iter_ = 0
+            while improve and (iter_ < self.max_iter):
                 best_score = benchmark
                 best_predictor = 0
                 # Loop over all predictors and try to remove or add it
                 for i in range(bag_predictors.shape[1]):
-                    for the_sign in [step, -step]:
-                        if normed_weights:
-                            candidate = (prediction * np.sum(weights) + the_sign * bag_predictors[:, i]) / (
-                            np.sum(weights) + the_sign)
+                    for the_sign in [self.step, -self.step]:
+                        if self.normed_weights:
+                            candidate = prediction * np.sum(weights) + the_sign * bag_predictors[:, i]
+                            candidate /= (np.sum(weights) + the_sign)
                         else:
                             candidate = prediction + the_sign * bag_predictors[:, i]
 
@@ -185,43 +238,43 @@ class PredictorStacker:
                             sign_i = the_sign
 
                 # Update benchmark if things have improved
-                if best_score < benchmark and (benchmark - best_score) >= eps:
+                if best_score < benchmark and (benchmark - best_score) >= self.eps:
                     improve = True
                     # Modify prediction
-                    if normed_weights:
-                        prediction = (prediction * np.sum(weights) + sign_i * bag_predictors[:, best_predictor]) / (
-                        np.sum(weights) + sign_i)
+                    if self.normed_weights:
+                        prediction = prediction * np.sum(weights) + sign_i * bag_predictors[:, best_predictor]
+                        prediction /= (np.sum(weights) + sign_i)
                     else:
                         prediction = (prediction + sign_i * bag_predictors[:, best_predictor])
                     # weights[best_predictor] += 1
                     weights[best_predictor] += sign_i
                     benchmark = self.metric(bag_target, prediction)
-                    if verbose >= 2 and (iter % verb_round == 0):
-                        print('Round %6d benchmark for feature %20s : %13.6f' % (
-                        iter, features[best_predictor], benchmark), sign_i)
+                    if self.verbose >= 2 and (iter_ % self.verb_round == 0):
+                        print('Round %6d benchmark for feature %20s : %13.6f'
+                              % (iter_, features[best_predictor], benchmark), sign_i)
                 else:
-                    if verbose >= 2:
-                        print("Best round is %d" % iter)
+                    if self.verbose >= 2:
+                        print("Best round is %d" % iter_)
                     improve = False
-                iter += 1
+                iter_ += 1
 
             # Now that weight have been found for the current bag
             # Update the bagged_prediction
-            if normed_weights:
-                weights = weights / np.sum(weights)
+            if self.normed_weights:
+                weights /= np.sum(weights)
 
             last_prediction = np.zeros(nb_samp)
             for i in range(len(weights)):
                 last_prediction += weights[i] * bag_predictors[:, i]
-            if verbose >= 1:
+            if self.verbose >= 1:
                 print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, last_prediction))
-            full_weights[pred_idx] += weights / n_bags
+            full_weights[pred_idx] += weights / self.n_bags
 
         # Find bagged prediction
         bagged_prediction = np.zeros(self.predictors.shape[0])
         for i in range(len(full_weights)):
             bagged_prediction += full_weights[i] * predictors[:, i]
-        if verbose >= 1:
+        if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
         diff = last_prediction - bagged_prediction[samp_idx]
@@ -231,31 +284,24 @@ class PredictorStacker:
         self.score = self.metric(self.target, bagged_prediction)
         self.weights = full_weights
 
-    def transform(self, data):
+    def _transform(self, data):
         prediction = np.zeros(len(data))
         tmp = np.array(data)
         for i, w in enumerate(self.weights):
             prediction += w * tmp[:, i]
         return prediction
 
-    def fit_swapping(self,
-                     sub_data=None,
-                     max_predictors=1.,
-                     max_samples=1.,
-                     n_bags=1,
-                     max_iter=10,
-                     verbose=0,
-                     verb_round=1,
-                     eps=1e-5,
-                     seed=24698537):
+    def _swapping_fit(self):
+        """
+        Swapping optimization process.
 
-        # Checks
-        if self.metric is None:
-            raise ValueError('a metric should be set before fitting')
-        if self.predictors is None:
-            raise ValueError('predictors not set before fitting')
-        if self.target is None:
-            raise ValueError('target not provided before fitting')
+        At each round each pair of predictors is tested (one is removed when the other is added)
+        Overall score improvement is tested. The best operation is kept.
+
+        Note that Predictors' contributions are allowed to be negative.
+
+        This optimization process often leads to better results compared to the standard process.
+        """
 
         # Compute mean score
         self.mean_score = self.metric(self.target, self.predictors.mean(axis=1).values)
@@ -265,7 +311,7 @@ class PredictorStacker:
         pred_indexes = np.arange(self.predictors.shape[1])
 
         # Set a seed
-        np.random.seed(seed)
+        np.random.seed(self.seed)
 
         # Init weights
         full_weights = np.zeros(self.predictors.shape[1])
@@ -274,14 +320,14 @@ class PredictorStacker:
         predictors = self.predictors.values
         features = self.predictors.columns
 
-        for bag in range(n_bags):
+        for bag in range(self.n_bags):
             # Shuffle indexes
             np.random.shuffle(samp_indexes)
             np.random.shuffle(pred_indexes)
 
             # Get ratioed predictors
-            nb_pred = int(self.predictors.shape[1] * max_predictors)
-            nb_samp = int(self.predictors.shape[0] * max_samples)
+            nb_pred = int(self.predictors.shape[1] * self.max_predictors)
+            nb_samp = int(self.predictors.shape[0] * self.max_samples)
             pred_idx = pred_indexes[:nb_pred]
             samp_idx = samp_indexes[:nb_samp]
 
@@ -298,15 +344,15 @@ class PredictorStacker:
 
             # Set benchmark
             benchmark = self.metric(bag_target, prediction)
-            if verbose >= 2:
+            if self.verbose >= 2:
                 print('Benchmark : ', benchmark)
 
             # Try to improve on the benchmark
             init_step = 1 / bag_predictors.shape[1]
             step = init_step
             improve = True
-            iter = 0
-            while (improve and (iter < max_iter)):
+            iter_ = 0
+            while improve and (iter_ < self.max_iter):
                 best_score = benchmark
                 best_swap = (0, 0)
                 # Try to modify weights
@@ -358,41 +404,60 @@ class PredictorStacker:
                     for n, weight in enumerate(weights):
                         prediction += weight * bag_predictors[:, n]
                     benchmark = self.metric(bag_target, prediction)
-                    if verbose >= 2 and (iter % verb_round == 0):
+                    if self.verbose >= 2 and (iter_ % self.verb_round == 0):
                         print('Round %6d benchmark for feature %20s / %20s : %13.6f'
-                              % (iter, features[best_swap[0]], features[best_swap[1]], benchmark), best_step)
+                              % (iter_, features[best_swap[0]], features[best_swap[1]], benchmark), best_step)
                 else:
-                    if step == init_step / 100:
+                    if step <= init_step / 100:
                         improve = False
-                        if verbose >= 2:
-                            print("Best round is %d" % iter)
-                    elif step == init_step / 10:
-                        step = init_step / 10
+                        if self.verbose >= 2:
+                            print("Best round is %d" % iter_)
                     else:
-                        step = init_step / 100
+                        step /= 10
+
                 # Increment iteration
-                iter += 1
+                iter_ += 1
 
             # Print current bag score
             last_prediction = np.zeros(nb_samp)
             for i in range(len(weights)):
                 last_prediction += weights[i] * bag_predictors[:, i]
-            if verbose >= 1:
+            if self.verbose >= 1:
                 print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, last_prediction))
-            print(weights)
+
             # Iteration finished for current bag, update full_weights
-            full_weights[pred_idx] += weights / n_bags
+            full_weights[pred_idx] += weights / self.n_bags
 
         # All bags done
         bagged_prediction = np.zeros(self.predictors.shape[0])
         for i in range(len(full_weights)):
             bagged_prediction += full_weights[i] * predictors[:, i]
-        if verbose >= 1:
+        if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
-        diff = last_prediction - bagged_prediction[samp_idx]
-
-        diff = bag_target - self.target[samp_idx]
+        # diff = last_prediction - bagged_prediction[samp_idx]
+        # diff = bag_target - self.target[samp_idx]
 
         self.score = self.metric(self.target, bagged_prediction)
         self.weights = full_weights
+
+    def get_weights(self):
+        return tuple(self.weights)
+
+
+class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
+
+    def predict_proba(self, X=None):
+        return self._transform(X)
+
+    def predict(self, X=None, threshold=.5):
+        probas = self._transform(X)
+        probas[probas >= threshold] = 1
+        probas[probas < threshold] = 0
+        return probas
+
+
+class RegressionLinearPredictorStacker(LinearPredictorStacker):
+
+    def predict(self, X=None):
+        return self._transform(X)
