@@ -9,6 +9,7 @@ prompt$coverage html
 import unittest
 from linear_stacker import LinearPredictorStacker
 import numpy as np
+import os.path
 
 
 def metric_rmse(truth, hat):
@@ -17,6 +18,11 @@ def metric_rmse(truth, hat):
 
 def metric_mae(truth, hat):
     return np.mean(np.abs(truth - hat))
+
+
+def get_path(file_name):
+    my_path = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(my_path, file_name)
 
 
 class TestPredictorStacker(unittest.TestCase):
@@ -51,22 +57,22 @@ class TestPredictorStacker(unittest.TestCase):
 
     def test_add_predictors_one_file(self):
         stacker = LinearPredictorStacker(metric=metric_rmse)
-        stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv'])
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv')])
         self.assertEqual(len(stacker.target), 1000)
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 20)
 
     def test_add_predictors_two_files(self):
         stacker = LinearPredictorStacker(metric=metric_rmse)
-        stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
-                                                  'noid_OOF_predictions_3.csv'])
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
+                                                  get_path('noid_OOF_predictions_3.csv')])
         self.assertEqual(len(stacker.target), 1000)
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 21)
 
     def test_add_predictors_file_error_raise_ValueError(self):
         stacker = LinearPredictorStacker(metric=metric_rmse)
-        self.assertRaises(ValueError, stacker.add_predictors_by_filename, files=['does_not_exist.csv'])
+        self.assertRaises(ValueError, stacker.add_predictors_by_filename, files=[get_path('does_not_exist.csv')])
 
     def test_add_predictors_not_a_string_raise_TypeError(self):
         stacker = LinearPredictorStacker(metric=metric_rmse)
@@ -76,8 +82,8 @@ class TestPredictorStacker(unittest.TestCase):
         stacker = LinearPredictorStacker(metric=metric_rmse)
         self.assertRaises(ValueError,
                           stacker.add_predictors_by_filename,
-                          files=['noid_OOF_predictions_1.csv',
-                                 'noid_OOF_predictions_2.csv'])
+                          files=[get_path('noid_OOF_predictions_1.csv'),
+                                 get_path('noid_OOF_predictions_2.csv')])
 
     def test_fit_regression_stacker_mae_no_bagging(self):
         """Test regression stacking with metric mean absolute error, no bagging"""
@@ -87,9 +93,9 @@ class TestPredictorStacker(unittest.TestCase):
                                          max_predictors=1.,
                                          max_samples=1.,
                                          verbose=2)
-        stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
-                                                  'noid_OOF_predictions_3.csv',
-                                                  'noid_OOF_predictions_4.csv'])
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
+                                                  get_path('noid_OOF_predictions_3.csv'),
+                                                  get_path('noid_OOF_predictions_4.csv')])
         self.assertEqual(len(stacker.target), 1000)
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
@@ -105,9 +111,9 @@ class TestPredictorStacker(unittest.TestCase):
                                          max_predictors=1.,
                                          max_samples=1.,
                                          verbose=2)
-        stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
-                                                  'noid_OOF_predictions_3.csv',
-                                                  'noid_OOF_predictions_4.csv'])
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
+                                                  get_path('noid_OOF_predictions_3.csv'),
+                                                  get_path('noid_OOF_predictions_4.csv')])
         self.assertEqual(len(stacker.target), 1000)
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
@@ -123,9 +129,9 @@ class TestPredictorStacker(unittest.TestCase):
                                          max_predictors=.8,
                                          max_samples=.8,
                                          seed=24698537)
-        stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
-                                                  'noid_OOF_predictions_3.csv',
-                                                  'noid_OOF_predictions_4.csv'])
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
+                                                  get_path('noid_OOF_predictions_3.csv'),
+                                                  get_path('noid_OOF_predictions_4.csv')])
         self.assertEqual(len(stacker.target), 1000)
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
@@ -142,9 +148,9 @@ class TestPredictorStacker(unittest.TestCase):
                                          max_predictors=1.,
                                          max_samples=1.,
                                          verbose=2)
-        stacker.add_predictors_by_filename(files=['noid_OOF_predictions_2.csv',
-                                                  'noid_OOF_predictions_3.csv',
-                                                  'noid_OOF_predictions_4.csv'])
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
+                                                  get_path('noid_OOF_predictions_3.csv'),
+                                                  get_path('noid_OOF_predictions_4.csv')])
         self.assertEqual(len(stacker.target), 1000)
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
