@@ -307,7 +307,8 @@ class LinearPredictorStacker(object):
         pred_indexes = np.arange(self.predictors.shape[1])
 
         # Set a seed
-        np.random.seed(self.seed)
+        if self.seed is not None:
+            np.random.seed(self.seed)
 
         # Init weights
         full_weights = np.zeros(self.predictors.shape[1])
@@ -344,7 +345,7 @@ class LinearPredictorStacker(object):
                 print('Benchmark : ', benchmark)
 
             # Try to improve on the benchmark
-            init_step = 1 / bag_predictors.shape[1]
+            init_step = 1.0 / bag_predictors.shape[1]
             step = init_step
             improve = True
             iter_ = 0
