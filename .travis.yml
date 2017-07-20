@@ -1,6 +1,6 @@
 language: python
 python:
-   - "2.6"
+  - "2.6"
   - "2.7"
   - "3.3" # Scikit-learn requires python >= 2.6 or >= 3.3)
   - "3.4"
