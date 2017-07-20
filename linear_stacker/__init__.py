@@ -1,3 +1,8 @@
-from .linear_stacker import LinearPredictorStacker
-from .linear_stacker import RegressionLinearPredictorStacker
-from .linear_stacker import BinaryClassificationLinearPredictorStacker
+from linear_stacker.linear_stacker import (
+    LinearPredictorStacker,
+    RegressionLinearPredictorStacker,
+    BinaryClassificationLinearPredictorStacker
+)
+
+__all__ = ['BinaryClassificationLinearPredictorStacker',
+           'RegressionLinearPredictorStacker']
