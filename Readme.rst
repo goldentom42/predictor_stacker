@@ -6,6 +6,7 @@ Linear Predictor Stacker
 Features
 --------
 Find best weights to linearly stack predictors against a metric.
+
 Currently support regression and binary classification.
 
 Code examples can be found `here <https://github.com/goldentom42/predictor_stacker/tree/master/linear_stacker/examples>`__.
@@ -22,7 +23,7 @@ Software Requirements
 Installation
 ------------
 
-From 'GitHub <https://github.com/goldentom42/predictor_stacker>'__:
+From `GitHub <https://github.com/goldentom42/predictor_stacker>`__:
 
 ::
 
