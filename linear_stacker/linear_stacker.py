@@ -91,7 +91,7 @@ class LinearPredictorStacker(object):
         :param files: list of file names containing predictions in csv format
         :return: Array of predictors
         """
-        for i, f in enumerate(files):
+        for f in files:
             # Read file
             pred = pd.read_csv(f, delimiter=',')
 
@@ -277,10 +277,6 @@ class LinearPredictorStacker(object):
         if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
-        diff = last_prediction - bagged_prediction[samp_idx]
-
-        diff = bag_target - self.target[samp_idx]
-
         self.score = self.metric(self.target, bagged_prediction)
         self.weights = full_weights
 
@@ -435,9 +431,6 @@ class LinearPredictorStacker(object):
         if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
-        # diff = last_prediction - bagged_prediction[samp_idx]
-        # diff = bag_target - self.target[samp_idx]
-
         self.score = self.metric(self.target, bagged_prediction)
         self.weights = full_weights
 
@@ -447,11 +440,11 @@ class LinearPredictorStacker(object):
 
 class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
 
-    def predict_proba(self, X=None):
-        return self._transform(X)
+    def predict_proba(self, data=None):
+        return self._transform(data)
 
-    def predict(self, X=None, threshold=.5):
-        probas = self._transform(X)
+    def predict(self, data=None, threshold=.5):
+        probas = self._transform(data)
         probas[probas >= threshold] = 1
         probas[probas < threshold] = 0
         return probas
@@ -459,5 +452,5 @@ class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
 
 class RegressionLinearPredictorStacker(LinearPredictorStacker):
 
-    def predict(self, X=None):
-        return self._transform(X)
+    def predict(self, data=None):
+        return self._transform(data)
