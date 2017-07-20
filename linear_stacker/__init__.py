@@ -1,4 +1,4 @@
-from linear_stacker.linear_stacker import (
+from .linear_stacker import (
     LinearPredictorStacker,
     RegressionLinearPredictorStacker,
     BinaryClassificationLinearPredictorStacker
