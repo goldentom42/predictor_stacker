@@ -26,5 +26,5 @@ comment:
   require_changes: no
 
 ignore:
-  - "linear_stacker/examples"
+  - linear_stacker/examples/*
 
