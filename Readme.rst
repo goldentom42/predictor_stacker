@@ -1,4 +1,4 @@
-|Build Status Travis|  |Code Quality| |License|
+|BuildStatusTravis| |CodeCov| |CodeQuality| |License|
 
 Linear Predictor Stacker
 ========================
@@ -30,11 +30,15 @@ From `GitHub <https://github.com/goldentom42/predictor_stacker>`__:
    git clone https://github.com/goldentom42/predictor_stacker.git
    python setup.py install
 
-.. |Build Status Travis| image:: https://travis-ci.org/goldentom42/predictor_stacker.svg?branch=master
+
+.. |BuildStatusTravis| image:: https://travis-ci.org/goldentom42/predictor_stacker.svg?branch=master
    :target: https://travis-ci.org/goldentom42/predictor_stacker
-.. |Code Quality| image:: https://landscape.io/github/goldentom42/predictor_stacker/master/landscape.svg?style=flat
+.. |CodeCov| image:: https://codecov.io/gh/goldentom42/predictor_stacker/branch/master/graph/badge.svg
+  :target: https://codecov.io/gh/goldentom42/predictor_stacker
+.. |CodeQuality| image:: https://landscape.io/github/goldentom42/predictor_stacker/master/landscape.svg?style=flat
    :target: https://landscape.io/github/goldentom42/predictor_stacker/master
    :alt: Code Health
 .. |License| image:: https://img.shields.io/badge/license-Apache%202.0-blue.svg
    :target: https://github.com/goldentom42/predictor_stacker/blob/master/LICENSE
+
 

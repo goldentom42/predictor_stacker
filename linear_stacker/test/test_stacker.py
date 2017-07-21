@@ -100,7 +100,8 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1187.1916616561432, places=4)
+        self.assertAlmostEqual(stacker.score, 1176.295406, places=4)
+        # Old version self.assertAlmostEqual(stacker.score, 1187.1916616561432, places=4)
         self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_fit_regression_stacker_rmse_no_bagging(self):
@@ -118,7 +119,8 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 2030.5021340510675, places=4)
+        self.assertAlmostEqual(stacker.score, 2013.0078068916193, places=4)
+        # Old version self.assertAlmostEqual(stacker.score, 2030.5021340510675, places=4)
         self.assertAlmostEqual(stacker.mean_score, 2032.2110846499691, places=4)
 
     def test_fit_regression_stacker_mae_ten_bags(self):
@@ -136,7 +138,8 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1187.6537373418842, places=4)
+        self.assertAlmostEqual(stacker.score, 1177.655476496355, places=4)
+        # Old version self.assertAlmostEqual(stacker.score, 1187.6537373418842, places=4)
         self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_fit_swapping_regression_stacker_no_bagging(self):

@@ -63,6 +63,7 @@ class LinearPredictorStacker(object):
         self.score = None
         self.weights = None
         self.mean_score = None
+        self.fitted = None
 
     def add_predictors_by_filename(self, files=None):
         """
@@ -164,6 +165,8 @@ class LinearPredictorStacker(object):
         At each round each predictor is either added or subtracted to to the overall prediction and overall score
         improvement is tested. The best operation is kept.
         """
+        self.fitted = False
+
         # Compute mean score
         self.mean_score = self.metric(self.target, self.predictors.mean(axis=1).values)
 
@@ -176,7 +179,7 @@ class LinearPredictorStacker(object):
             np.random.seed(self.seed)
 
         # Init weights
-        full_weights = np.zeros(self.predictors.shape[1])
+        self.weights = np.zeros(self.predictors.shape[1])
 
         # Run bagging
         predictors = self.predictors.values
@@ -187,7 +190,7 @@ class LinearPredictorStacker(object):
             np.random.shuffle(samp_indexes)
             np.random.shuffle(pred_indexes)
 
-            # Get ratioed predictors
+            # Get bagged predictors
             nb_pred = int(self.predictors.shape[1] * self.max_predictors)
             nb_samp = int(self.predictors.shape[0] * self.max_samples)
             pred_idx = pred_indexes[:nb_pred]
@@ -197,18 +200,10 @@ class LinearPredictorStacker(object):
             bag_target = self.target[samp_idx]
 
             # Init weights and prediction for current bag
-            if self.normed_weights:
-                weights = np.ones(nb_pred) * nb_pred
-            else:
-                weights = np.zeros(nb_pred)
+            weights = self._init_weights(nb_pred)
 
-            prediction = np.zeros(nb_samp)
-            if self.normed_weights:
-                for i, weight in enumerate(weights):
-                    prediction += weight * bag_predictors[:, i] / (np.sum(weights))
-            else:
-                for i, weight in enumerate(weights):
-                    prediction += weight * bag_predictors[:, i]
+            # Compute prediction
+            prediction = self._compute_prediction(bag_predictors, weights)
 
             # Set benchmark and print it
             benchmark = self.metric(bag_target, prediction)
@@ -219,68 +214,115 @@ class LinearPredictorStacker(object):
             improve = True
             iter_ = 0
             while improve and (iter_ < self.max_iter):
-                best_score = benchmark
-                best_predictor = 0
-                # Loop over all predictors and try to remove or add it
-                for i in range(bag_predictors.shape[1]):
-                    for the_sign in [self.step, -self.step]:
-                        if self.normed_weights:
-                            candidate = prediction * np.sum(weights) + the_sign * bag_predictors[:, i]
-                            candidate /= (np.sum(weights) + the_sign)
-                        else:
-                            candidate = prediction + the_sign * bag_predictors[:, i]
-
-                        candidate_score = self.metric(bag_target, candidate)
-                        # print('New score for predictor ', str(i), ':', candidate_score)
-                        if candidate_score < best_score:
-                            best_score = candidate_score
-                            best_predictor = i
-                            sign_i = the_sign
-
-                # Update benchmark if things have improved
-                if best_score < benchmark and (benchmark - best_score) >= self.eps:
+                pred_id, score, weight_upd = self._search_best_weight_candidate(bag_predictors,
+                                                                                bag_target,
+                                                                                benchmark,
+                                                                                weights)
+                # Update benchmark and weights if things have improved
+                if score < benchmark and (benchmark - score) >= self.eps:
+                    # Set improvement indicator
                     improve = True
-                    # Modify prediction
-                    if self.normed_weights:
-                        prediction = prediction * np.sum(weights) + sign_i * bag_predictors[:, best_predictor]
-                        prediction /= (np.sum(weights) + sign_i)
-                    else:
-                        prediction = (prediction + sign_i * bag_predictors[:, best_predictor])
-                    # weights[best_predictor] += 1
-                    weights[best_predictor] += sign_i
+
+                    # Update weights
+                    weights = self._update_weights(weights=weights, w_pos=pred_id, step=weight_upd)
+
+                    # Compute prediction
+                    prediction = self._compute_prediction(predictors=bag_predictors, weights=weights)
+
+                    # Compute benchmark
                     benchmark = self.metric(bag_target, prediction)
+
+                    # Display round improvement
                     if self.verbose >= 2 and (iter_ % self.verb_round == 0):
                         print('Round %6d benchmark for feature %20s : %13.6f'
-                              % (iter_, features[best_predictor], benchmark), sign_i)
+                              % (iter_, features[pred_id], benchmark), weight_upd)
                 else:
+                    # No improvement found, display best round if needed
                     if self.verbose >= 2:
                         print("Best round is %d" % iter_)
                     improve = False
                 iter_ += 1
 
-            # Now that weight have been found for the current bag
-            # Update the bagged_prediction
-            if self.normed_weights:
-                weights /= np.sum(weights)
-
-            last_prediction = np.zeros(nb_samp)
-            for i in range(len(weights)):
-                last_prediction += weights[i] * bag_predictors[:, i]
+            # Display current bag score
+            bag_prediction = self._compute_prediction(predictors=bag_predictors, weights=weights)
             if self.verbose >= 1:
-                print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, last_prediction))
-            full_weights[pred_idx] += weights / self.n_bags
+                print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, bag_prediction))
 
-        # Find bagged prediction
-        bagged_prediction = np.zeros(self.predictors.shape[0])
-        for i in range(len(full_weights)):
-            bagged_prediction += full_weights[i] * predictors[:, i]
+            # Update global weights with bag fit
+            self.weights[pred_idx] += weights / self.n_bags
+
+        # Display bagged prediction score
+        bagged_prediction = self._compute_prediction(predictors=predictors, weights=self.weights)
         if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
         self.score = self.metric(self.target, bagged_prediction)
-        self.weights = full_weights
+        # self.weights = self.weightss
+
+        self.fitted = True
+
+    def _search_best_weight_candidate(self, bag_predictors, bag_target, benchmark, weights):
+        best_score = benchmark
+        best_predictor = 0
+        sign_i = None
+        # Loop over all predictors and try to remove or add it
+        for i in range(bag_predictors.shape[1]):
+            for the_sign in [self.step, -self.step]:
+                # update weights
+                candidate_weights = self._update_weights(weights, i, the_sign)
+
+                # Compute new candidate prediction
+                candidate_pred = self._compute_prediction(predictors=bag_predictors,
+                                                          weights=candidate_weights)
+
+                # compute candidate score
+                candidate_score = self.metric(bag_target, candidate_pred)
+
+                # print('New score for predictor ', str(i), ':', candidate_score)
+                # Check for score improvement
+                if candidate_score < best_score:
+                    best_score = candidate_score
+                    best_predictor = i
+                    sign_i = the_sign
+
+        return best_predictor, best_score, sign_i
+
+    def _init_weights(self, nb_pred):
+        if self.normed_weights:
+            weights = np.ones(nb_pred) / nb_pred
+            # Override step
+            self.step = 1.0 / nb_pred
+        else:
+            weights = np.zeros(nb_pred)
+
+        return weights
+
+    def _update_weights(self, weights, w_pos, step):
+        # Make sure we do not change passed weights
+        weights_ = weights.copy()
+        weights_[w_pos] += step
+        if self.normed_weights:
+            weights_ /= np.sum(weights_)
+
+        return weights_
+
+    def _compute_prediction(self, predictors, weights):
+        """Compute prediction for predictors and weights"""
+        prediction = np.zeros(len(predictors))
+        if self.normed_weights:
+            for i, weight in enumerate(weights):
+                prediction += weight * predictors[:, i] / (np.sum(weights))
+        else:
+            for i, weight in enumerate(weights):
+                prediction += weight * predictors[:, i]
+
+        return prediction
 
     def _transform(self, data):
+        """Apply fitted weights to the data"""
+        if not self.fitted:
+            raise (ValueError, 'Stacker is not fitted yet')
+
         prediction = np.zeros(len(data))
         tmp = np.array(data)
         for i, w in enumerate(self.weights):
@@ -298,6 +340,7 @@ class LinearPredictorStacker(object):
 
         This optimization process often leads to better results compared to the standard process.
         """
+        self.fitted = False
 
         # Compute mean score
         self.mean_score = self.metric(self.target, self.predictors.mean(axis=1).values)
@@ -311,7 +354,7 @@ class LinearPredictorStacker(object):
             np.random.seed(self.seed)
 
         # Init weights
-        full_weights = np.zeros(self.predictors.shape[1])
+        self.weightss = np.zeros(self.predictors.shape[1])
 
         # Run bagging
         predictors = self.predictors.values
@@ -422,36 +465,56 @@ class LinearPredictorStacker(object):
             if self.verbose >= 1:
                 print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, last_prediction))
 
-            # Iteration finished for current bag, update full_weights
-            full_weights[pred_idx] += weights / self.n_bags
+            # Iteration finished for current bag, update self.weightss
+            self.weightss[pred_idx] += weights / self.n_bags
 
         # All bags done
         bagged_prediction = np.zeros(self.predictors.shape[0])
-        for i in range(len(full_weights)):
-            bagged_prediction += full_weights[i] * predictors[:, i]
+        for i in range(len(self.weightss)):
+            bagged_prediction += self.weightss[i] * predictors[:, i]
         if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
         self.score = self.metric(self.target, bagged_prediction)
-        self.weights = full_weights
+        self.weights = self.weightss
+        self.fitted = True
 
     def get_weights(self):
         return tuple(self.weights)
 
 
 class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
+    """
+    Binary Classification Linear Stacker computes the best weights to linearly merge predictors
+    against a specific metric.
 
-    def predict_proba(self, data=None):
-        return self._transform(data)
+    Note that Stacker raw output is probability based.
+    """
 
-    def predict(self, data=None, threshold=.5):
-        probas = self._transform(data)
+    def predict_proba(self, predictors=None):
+        """Apply linear stacker to predictors"""
+        return self._transform(predictors)
+
+    def predict(self, predictors=None, threshold=.5):
+        """
+        Apply linear stacker to predictors and then assign label against a threshold
+        :param predictors: set of predictors to be merged
+         number of predictors should be the same as the set used to train the stacker
+        :param threshold: threshold used to assign binary label. defaults to .5
+        :return: weighted sum of predictors
+        """
+        probas = self._transform(predictors)
         probas[probas >= threshold] = 1
         probas[probas < threshold] = 0
         return probas
 
 
 class RegressionLinearPredictorStacker(LinearPredictorStacker):
-
-    def predict(self, data=None):
-        return self._transform(data)
+    def predict(self, predictors=None):
+        """
+        Apply linear stacker to predictors
+        :param predictors: ctors to be merged
+         number of predictors should be the same as the set used to train the stacker
+        :return: weighted sum of predictors
+        """
+        return self._transform(predictors)

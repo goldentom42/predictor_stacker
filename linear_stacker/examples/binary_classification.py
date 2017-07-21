@@ -1,17 +1,36 @@
 from sklearn.datasets import load_breast_cancer
+from sklearn import __version__ as sklearn_version
 from sklearn.linear_model import RidgeClassifier, LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier
-from sklearn.model_selection import KFold
 from sklearn.metrics import log_loss, accuracy_score
 import pandas as pd
 import numpy as np
 from linear_stacker import BinaryClassificationLinearPredictorStacker
+try:
+    from sklearn.model_selection import KFold
+except ImportError:
+    from sklearn.cross_validation import KFold
 
+
+# from sklearn.cross_validation import KFold
 pd.options.display.max_rows = 600
+print(sklearn_version)
 
 
 def sigmoid(x):
     return 1 / (1 + np.exp(- x))
+
+
+def get_folds(data):
+    """returns correct folding generator for different versions of sklearn"""
+    if sklearn_version.split('.')[1] == '18':
+        # Module model_selection is in the distribution
+        kf = KFold(n_splits=5, shuffle=True, random_state=1)
+        return kf.split(data)
+    else:
+        # Module model_selection is not in the distribution
+        kf = KFold(n=len(data), n_folds=5, shuffle=True, random_state=1)
+        return kf
 
 # Load breast cancer dataset
 dataset = load_breast_cancer()
@@ -26,15 +45,13 @@ classifiers = [
     ('gbr', GradientBoostingClassifier(n_estimators=100, max_depth=2,learning_rate=.1,random_state=4))
 ]
 
-kf = KFold(n_splits=5, shuffle=True, random_state=1)
-
 # Go through classifiers
 oof_labels = np.zeros((len(X_full), len(classifiers)))
 oof_probas = np.zeros((len(X_full), len(classifiers)))
 
 for reg_i, (name, reg) in enumerate(classifiers):
     # compute out of fold (OOF) predictions
-    for trn_idx, val_idx in kf.split(X_full):
+    for trn_idx, val_idx in get_folds(X_full):
         # Split data in training and validation sets
         trn_X, trn_Y = X_full[trn_idx], y_full[trn_idx]
         val_X, val_Y = X_full[val_idx], y_full[val_idx]
