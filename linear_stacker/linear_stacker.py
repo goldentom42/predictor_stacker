@@ -1,3 +1,4 @@
+from __future__ import division
 import os.path
 import pandas as pd
 import numpy as np
@@ -147,10 +148,8 @@ class LinearPredictorStacker(object):
             self._check_predictors_and_target(predictors, target)
         else:
             # Predictors have been set using files
-            if self.predictors is None:
-                raise ValueError('predictors not set before fitting')
-            if self.target is None:
-                raise ValueError('target not provided before fitting')
+            if (self.predictors is None) | (self.target is None):
+                raise ValueError('predictors and target must be set before fitting')
 
         # Check algo
         if self.algo == 'standard':
@@ -213,6 +212,7 @@ class LinearPredictorStacker(object):
             # Try to improve on the benchmark
             improve = True
             iter_ = 0
+            init_step = self.step
             while improve and (iter_ < self.max_iter):
                 pred_id, score, weight_upd = self._search_best_weight_candidate(bag_predictors,
                                                                                 bag_target,
@@ -237,10 +237,19 @@ class LinearPredictorStacker(object):
                         print('Round %6d benchmark for feature %20s : %13.6f'
                               % (iter_, features[pred_id], benchmark), weight_upd)
                 else:
-                    # No improvement found, display best round if needed
-                    if self.verbose >= 2:
-                        print("Best round is %d" % iter_)
-                    improve = False
+                    if self.step <= init_step / 100:
+                        improve = False
+                        if self.verbose >= 2:
+                            print("Best round is %d" % iter_)
+                    else:
+                        improve = True
+                        self.step /= 10
+                        # print("New step : ", self.step)
+
+                    # # No improvement found, display best round if needed
+                    # if self.verbose >= 2:
+                    #     print("Best round is %d" % iter_)
+                    # improve = False
                 iter_ += 1
 
             # Display current bag score
@@ -354,7 +363,7 @@ class LinearPredictorStacker(object):
             np.random.seed(self.seed)
 
         # Init weights
-        self.weightss = np.zeros(self.predictors.shape[1])
+        self.weights = np.zeros(self.predictors.shape[1])
 
         # Run bagging
         predictors = self.predictors.values
@@ -374,15 +383,13 @@ class LinearPredictorStacker(object):
             bag_predictors = predictors[samp_idx, :][:, pred_idx]
             bag_target = self.target[samp_idx]
 
-            # Init weights
+            # Init weights to equal weights
             weights = np.ones(bag_predictors.shape[1]) / bag_predictors.shape[1]
 
             # Compute initial prediction and benchmark
-            prediction = np.zeros(nb_samp)
-            for i, weight in enumerate(weights):
-                prediction += weight * bag_predictors[:, i] / (np.sum(weights))
+            prediction = self._compute_prediction(predictors=bag_predictors, weights=weights)
 
-            # Set benchmark
+            # Set benchmark and display if needed
             benchmark = self.metric(bag_target, prediction)
             if self.verbose >= 2:
                 print('Benchmark : ', benchmark)
@@ -421,12 +428,11 @@ class LinearPredictorStacker(object):
                             #    continue
                             candidate_weights_j[j] += counter_step
                             # Compute candidate_weights score
-                            candidate_pred = np.zeros(bag_predictors.shape[0])
-                            for n, weight in enumerate(candidate_weights_j):
-                                candidate_pred += weight * bag_predictors[:, n]
+                            candidate_pred = self._compute_prediction(predictors=bag_predictors,
+                                                                      weights=candidate_weights_j)
+
+                            # compute score
                             candidate_score = self.metric(bag_target, candidate_pred)
-                            # print(candidate_weights_j)
-                            # print(candidate_score)
                             # Update best params
                             if candidate_score < best_score:
                                 best_score = candidate_score
@@ -435,19 +441,24 @@ class LinearPredictorStacker(object):
 
                 if best_score < benchmark:
                     improve = True
-                    # Change weights
+                    # Update weights with best combination
                     weights[best_swap[0]] += best_step
                     weights[best_swap[1]] -= best_step
-                    # print("best score weight : ", weights)
 
-                    prediction = np.zeros(bag_predictors.shape[0])
-                    for n, weight in enumerate(weights):
-                        prediction += weight * bag_predictors[:, n]
+                    # Compute prediction
+                    prediction = self._compute_prediction(predictors=bag_predictors, weights=weights)
+
+                    # Compute new benchmark and display if required
                     benchmark = self.metric(bag_target, prediction)
                     if self.verbose >= 2 and (iter_ % self.verb_round == 0):
                         print('Round %6d benchmark for feature %20s / %20s : %13.6f'
-                              % (iter_, features[best_swap[0]], features[best_swap[1]], benchmark), best_step)
+                              # % (iter_, features[best_swap[0]], features[best_swap[1]], benchmark), best_step)
+                              % (iter_,
+                                 features[pred_idx[best_swap[0]]],
+                                 features[pred_idx[best_swap[1]]],
+                                 benchmark), best_step)
                 else:
+                    # Decrease step size in case no improvement is found
                     if step <= init_step / 100:
                         improve = False
                         if self.verbose >= 2:
@@ -465,18 +476,15 @@ class LinearPredictorStacker(object):
             if self.verbose >= 1:
                 print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, last_prediction))
 
-            # Iteration finished for current bag, update self.weightss
-            self.weightss[pred_idx] += weights / self.n_bags
+            # Iteration finished for current bag, update self.weights
+            self.weights[pred_idx] += weights / self.n_bags
 
-        # All bags done
-        bagged_prediction = np.zeros(self.predictors.shape[0])
-        for i in range(len(self.weightss)):
-            bagged_prediction += self.weightss[i] * predictors[:, i]
+        # All bags done, compute bagged score and display if needed
+        bagged_prediction = self._compute_prediction(predictors=predictors, weights=self.weights)
         if self.verbose >= 1:
             print('Final score : ', self.metric(self.target, bagged_prediction))
 
         self.score = self.metric(self.target, bagged_prediction)
-        self.weights = self.weightss
         self.fitted = True
 
     def get_weights(self):
