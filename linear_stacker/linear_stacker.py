@@ -3,6 +3,8 @@ import os.path
 import pandas as pd
 import numpy as np
 
+#np.set_printoptions(precision=2)
+
 
 class LinearPredictorStacker(object):
     def __init__(self,
@@ -13,7 +15,6 @@ class LinearPredictorStacker(object):
                  max_samples=1.0,
                  n_bags=1,
                  max_iter=10,
-                 step=1,
                  verbose=0,
                  verb_round=1,
                  normed_weights=True,
@@ -52,7 +53,6 @@ class LinearPredictorStacker(object):
         self.max_samples = max_samples
         self.n_bags = n_bags
         self.max_iter = max_iter
-        self.step = step
         self.verbose = verbose
         self.verb_round = verb_round
         self.normed_weights = normed_weights
@@ -133,13 +133,26 @@ class LinearPredictorStacker(object):
             raise ValueError('Target and predictors have different length')
         if len(target.shape) > 1:
             raise ValueError('Target contains more than one column')
-        if np.sum(predictors.isnull().sum()) > 0:
+        if np.sum(np.sum(np.isnan(predictors), axis=1)) > 0:
             raise ValueError('Predictors contain NaN')
-        if target.isnull().sum() > 0:
+        if np.sum(np.isnan(target)) > 0:
             raise ValueError('Target contain NaN')
-        # Set predictors and target
-        self.predictors = predictors
-        self.target = np.array(target)
+
+        # check predictors type and set predictors
+        if type(predictors) is pd.core.frame.DataFrame:
+            self.predictors = predictors
+        elif type(predictors) is np.ndarray:
+            self.predictors = pd.DataFrame(predictors, columns=['p' + str(i) for i in range(predictors.shape[1])])
+        else:
+            raise TypeError('Predictors should be an ndarray or a pandas DataFrame object')
+
+        # Check target type and set target
+        if type(target) is pd.core.series.Series:
+            self.target = np.array(target)
+        elif type(target) is np.ndarray:
+            self.target = target
+        else:
+            raise TypeError('Target should be an ndarray or a pandas Series object')
 
     def fit(self, predictors=None, target=None):
 
@@ -212,14 +225,15 @@ class LinearPredictorStacker(object):
             # Try to improve on the benchmark
             improve = True
             iter_ = 0
-            init_step = self.step
+            init_step = 1.0 / predictors.shape[1]
+            self.step = init_step
             while improve and (iter_ < self.max_iter):
                 pred_id, score, weight_upd = self._search_best_weight_candidate(bag_predictors,
                                                                                 bag_target,
                                                                                 benchmark,
                                                                                 weights)
                 # Update benchmark and weights if things have improved
-                if score < benchmark and (benchmark - score) >= self.eps:
+                if self._check_score_improvement(benchmark=benchmark, score=score):
                     # Set improvement indicator
                     improve = True
 
@@ -289,7 +303,7 @@ class LinearPredictorStacker(object):
 
                 # print('New score for predictor ', str(i), ':', candidate_score)
                 # Check for score improvement
-                if candidate_score < best_score:
+                if self._check_score_improvement(benchmark=best_score, score=candidate_score):
                     best_score = candidate_score
                     best_predictor = i
                     sign_i = the_sign
@@ -330,13 +344,19 @@ class LinearPredictorStacker(object):
     def _transform(self, data):
         """Apply fitted weights to the data"""
         if not self.fitted:
-            raise (ValueError, 'Stacker is not fitted yet')
+            raise ValueError('Stacker is not fitted yet')
 
         prediction = np.zeros(len(data))
         tmp = np.array(data)
         for i, w in enumerate(self.weights):
             prediction += w * tmp[:, i]
         return prediction
+
+    def _check_score_improvement(self, benchmark, score):
+        if self.maximize:
+            return (score > benchmark) and abs(benchmark - score) >= self.eps
+        else:
+            return (score < benchmark) and abs(benchmark - score) >= self.eps
 
     def _swapping_fit(self):
         """
@@ -434,12 +454,12 @@ class LinearPredictorStacker(object):
                             # compute score
                             candidate_score = self.metric(bag_target, candidate_pred)
                             # Update best params
-                            if candidate_score < best_score:
+                            if self._check_score_improvement(benchmark=best_score, score=candidate_score):
                                 best_score = candidate_score
                                 best_swap = (i, j)
                                 best_step = the_step
 
-                if best_score < benchmark:
+                if self._check_score_improvement(benchmark=benchmark, score=best_score):
                     improve = True
                     # Update weights with best combination
                     weights[best_swap[0]] += best_step
@@ -500,8 +520,8 @@ class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
     """
 
     def predict_proba(self, predictors=None):
-        """Apply linear stacker to predictors"""
-        return self._transform(predictors)
+        """Apply linear stacker to predictors and make sure probabilities are in [0, 1]"""
+        return np.clip(self._transform(predictors), 1e-6, 1 - 1e-6)
 
     def predict(self, predictors=None, threshold=.5):
         """
@@ -511,7 +531,9 @@ class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
         :param threshold: threshold used to assign binary label. defaults to .5
         :return: weighted sum of predictors
         """
-        probas = self._transform(predictors)
+        # Get probabilities
+        probas = self.predict_proba(predictors)
+        # Apply threshold to decide label
         probas[probas >= threshold] = 1
         probas[probas < threshold] = 0
         return probas
@@ -526,3 +548,109 @@ class RegressionLinearPredictorStacker(LinearPredictorStacker):
         :return: weighted sum of predictors
         """
         return self._transform(predictors)
+
+
+class MultiLabelClassificationLinearPredictorStacker(object):
+    """
+    MultiLabelClassificationLinearPredictorStacker uses 1 versus rest algorithm
+    There is one BinaryClassificationLinearPredictorStacker per class label
+    """
+    def __init__(self,
+                 metric=None,
+                 maximize=False,
+                 max_predictors=1.0,
+                 max_samples=1.0,
+                 n_bags=1,
+                 max_iter=10,
+                 verbose=0,
+                 verb_round=1,
+                 normed_weights=True,
+                 eps=1e-5,
+                 seed=None):
+
+        if metric is None:
+            raise ValueError('No metric has been provided')
+
+        self.metric = metric
+        self.algo = 'swapping'
+        self.maximize = maximize
+        self.max_predictors = max_predictors
+        self.max_samples = max_samples
+        self.n_bags = n_bags
+        self.max_iter = max_iter
+        self.verbose = verbose
+        self.verb_round = verb_round
+        self.normed_weights = normed_weights
+        self.eps = eps
+        self.seed = seed
+
+        # Add multi class attributes
+        self.labels = None
+        self.labels_weights = None
+        self.label_stackers = None
+
+    # Overload fit method to fit
+    def fit(self, predictors=None, target=None):
+        """
+        Method to fit all one vs all stackers
+        :param predictors: set of predictors to be stacked
+        :param target: target labels
+        :return: None
+        """
+        # Check predictors and target
+        # if (predictors is not None) and (target is not None):
+        #     self._check_predictors_and_target(predictors, target)
+        # else:
+        #     # Predictors have been set using files
+        #     if (self.predictors is None) | (self.target is None):
+        #         raise ValueError('predictors and target must be set before fitting')
+
+        # get labels ordered
+        labeled_target = target.copy()
+        self.labels = sorted(np.unique(labeled_target))
+
+        # Go through labels for one vs all binary classification
+        label_probas = np.zeros((len(target), len(self.labels)))
+        self.labels_weights = np.zeros((predictors.shape[1], len(self.labels)))
+        for i_lab, label in enumerate(self.labels):
+            # Make binary target for current label
+            class_target = labeled_target.copy()
+            class_target[class_target != label] = -1
+            class_target[class_target == label] = 1
+            class_target[class_target == -1] = 0
+
+            # Istantiate a Binary Stacker
+            stacker = BinaryClassificationLinearPredictorStacker(metric=self.metric,
+                                                                 maximize=self.maximize,
+                                                                 algo=self.algo,
+                                                                 max_predictors=self.max_predictors,
+                                                                 max_samples=self.max_samples,
+                                                                 n_bags=self.n_bags,
+                                                                 max_iter=self.max_iter,
+                                                                 verbose=self.verbose,
+                                                                 verb_round=self.verb_round,
+                                                                 seed=self.seed)
+            # Fit stacker
+            stacker.fit(predictors=predictors, target=class_target)
+            # Keep label's weight
+            self.labels_weights[:, i_lab] = stacker.get_weights()
+            # Keep stacker
+            if self.label_stackers is None:
+                self.label_stackers = [stacker]
+            else:
+                self.label_stackers.append(stacker)
+
+    def predict_proba(self, predictors=None):
+        label_probas = np.zeros((len(predictors), len(self.labels)))
+        for i_lab, label in enumerate(self.labels):
+            label_probas[:, i_lab] = self.label_stackers[i_lab].predict_proba(predictors)
+            # Return probas making sure everything sum to 1
+        return label_probas / np.sum(label_probas, axis=1).reshape(-1, 1)
+
+    def predict(self, predictors=None):
+        # Compute probabilities
+        label_probas = self.predict_proba(predictors=predictors)
+
+        # For each row find the max
+        the_max = np.argmax(label_probas, axis=1)
+        return np.array([self.labels[x] for x in the_max])

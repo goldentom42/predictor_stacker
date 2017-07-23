@@ -1,7 +1,8 @@
 from .linear_stacker import (
     LinearPredictorStacker,
     RegressionLinearPredictorStacker,
-    BinaryClassificationLinearPredictorStacker
+    BinaryClassificationLinearPredictorStacker,
+    MultiLabelClassificationLinearPredictorStacker
 )
 
 __all__ = ['BinaryClassificationLinearPredictorStacker',

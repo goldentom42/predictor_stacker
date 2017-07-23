@@ -10,19 +10,20 @@ import unittest
 from linear_stacker import (
     LinearPredictorStacker,
     BinaryClassificationLinearPredictorStacker,
+    MultiLabelClassificationLinearPredictorStacker,
     RegressionLinearPredictorStacker
 )
 import numpy as np
 import pandas as pd
 import os.path
-from sklearn.datasets import load_breast_cancer
+from sklearn.datasets import load_breast_cancer, load_iris
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier
 from sklearn.metrics import log_loss, accuracy_score
 from sklearn.datasets import load_boston
 from sklearn.linear_model import Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, r2_score
 
 def metric_rmse(truth, hat):
     return np.mean(np.power(truth - hat, 2)) ** .5
@@ -52,7 +53,7 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(stacker.max_samples, 1.0)
         self.assertEqual(stacker.n_bags, 1)
         self.assertEqual(stacker.max_iter, 10)
-        self.assertEqual(stacker.step, 1)
+        # self.assertEqual(stacker.step, 1)
         self.assertEqual(stacker.verbose, 0)
         self.assertEqual(stacker.verb_round, 1)
         self.assertEqual(stacker.normed_weights, True)
@@ -208,7 +209,7 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1177.655476496355, places=4)
+        self.assertAlmostEqual(stacker.score, 1179.2406088734808, places=4)
         # Old version self.assertAlmostEqual(stacker.score, 1187.6537373418842, places=4)
         self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
@@ -230,7 +231,7 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1156.35521063, places=4)
+        self.assertAlmostEqual(stacker.score, 1156.5085876533767, places=4)
         self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_standard_fit_regression_stacker_no_bagging_free_weights(self):
@@ -240,11 +241,11 @@ class TestPredictorStacker(unittest.TestCase):
                                          normed_weights=False,
                                          max_iter=200,
                                          n_bags=1,
-                                         step=1,
                                          max_predictors=1.,
                                          max_samples=1.,
                                          verbose=2,
-                                         eps=1e-3)
+                                         eps=1e-3,
+                                         seed=0)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
                                                   get_path('noid_OOF_predictions_4.csv')])
@@ -252,7 +253,8 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1177.51087, places=4)
+        print(stacker.get_weights())
+        self.assertAlmostEqual(stacker.score, 1185.0745095110819, places=4)
         self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_unsupported_algorithm(self):
@@ -349,7 +351,7 @@ class TestPredictorStacker(unittest.TestCase):
         stacker.fit(pd.DataFrame(predictors), pd.Series(y_full))
         self.assertAlmostEqual(1.2202887, mean_squared_error(y_full, stacker.predict(predictors)), places=5)
 
-    def test_classification_stacking(self):
+    def get_classifier_predictors(self):
         # For a more appropriate way to use predition stacking see the examples
         # Load breast cancer dataset
         dataset = load_breast_cancer()
@@ -372,9 +374,113 @@ class TestPredictorStacker(unittest.TestCase):
             predictors[:, i_clf] = clf.predict_proba(X_full)[:, 1]
             print("clf %s log_loss %.5f" % (name, log_loss(y_full, predictors[:, i_clf])))
 
+        return predictors, dataset.target
+
+    def test_classification_stacking(self):
+        predictors, target = self.get_classifier_predictors()
         # Now use stacker
         stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss)
-        stacker.fit(pd.DataFrame(predictors), pd.Series(y_full))
-        self.assertAlmostEqual(0.0010017, log_loss(y_full, stacker.predict_proba(predictors)), places=5)
-        self.assertAlmostEqual(1.0, accuracy_score(y_full, stacker.predict(predictors)), places=2)
+        stacker.fit(pd.DataFrame(predictors), pd.Series(target))
+        self.assertAlmostEqual(0.0010017, log_loss(target, stacker.predict_proba(predictors)), places=5)
+        self.assertAlmostEqual(1.0, accuracy_score(target, stacker.predict(predictors)), places=2)
 
+    def test_several_fits_classification(self):
+        predictors, target = self.get_classifier_predictors()
+        stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss, max_iter=35, verbose=2,
+                                                             algo='swapping', normed_weights=False)
+        # first fit
+        stacker.fit(pd.DataFrame(predictors), pd.Series(target))
+        self.assertAlmostEqual(0.00018589380467956424, log_loss(target, stacker.predict_proba(predictors)), places=5)
+        self.assertAlmostEqual(1.0, accuracy_score(target, stacker.predict(predictors)), places=2)
+        # second fit should give same values
+        stacker.fit(pd.DataFrame(predictors), pd.Series(target))
+        self.assertAlmostEqual(0.00018589380467956424, log_loss(target, stacker.predict_proba(predictors)), places=5)
+        self.assertAlmostEqual(1.0, accuracy_score(target, stacker.predict(predictors)), places=2)
+
+        stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss, max_iter=35, verbose=2,
+                                                             algo='standard', normed_weights=False)
+        # first fit
+        stacker.fit(pd.DataFrame(predictors), pd.Series(target))
+        self.assertAlmostEqual(0.00025499752810984901, log_loss(target, stacker.predict_proba(predictors)), places=5)
+        self.assertAlmostEqual(1.0, accuracy_score(target, stacker.predict(predictors)), places=2)
+        # second fit should give same values
+        stacker.fit(pd.DataFrame(predictors), pd.Series(target))
+        self.assertAlmostEqual(0.00025499752810984901, log_loss(target, stacker.predict_proba(predictors)), places=5)
+        self.assertAlmostEqual(1.0, accuracy_score(target, stacker.predict(predictors)), places=2)
+
+    def test_regression_r2_score_maximization(self):
+        stacker = LinearPredictorStacker(metric=r2_score,
+                                         maximize=True,
+                                         algo='standard',
+                                         normed_weights=False,
+                                         max_iter=200,
+                                         n_bags=1,
+                                         max_predictors=1.,
+                                         max_samples=1.,
+                                         verbose=2,
+                                         eps=1e-4,
+                                         seed=0)
+        stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
+                                                  get_path('noid_OOF_predictions_3.csv'),
+                                                  get_path('noid_OOF_predictions_4.csv')])
+        self.assertEqual(len(stacker.target), 1000)
+        self.assertEqual(len(stacker.predictors), 1000)
+        self.assertEqual(stacker.predictors.shape[1], 22)
+        stacker.fit()
+        self.assertAlmostEqual(stacker.score, 0.5478882, places=4)
+        self.assertAlmostEqual(stacker.mean_score, 0.537271112149033, places=4)
+
+    def test_multilabelclassification(self):
+        # Load iris dataset
+        dataset = load_iris()
+        n_classes = len(np.unique(dataset.target))
+
+        classifiers = [
+            ('logit', LogisticRegression(C=0.1,
+                                         random_state=1)),
+            ('xtr', ExtraTreesClassifier(n_estimators=50,
+                                         max_features=.4,
+                                         max_depth=5,
+                                         random_state=2,
+                                         n_jobs=-1)),
+            ('rfr', RandomForestClassifier(n_estimators=50,
+                                           max_features=.2,
+                                           max_depth=5,
+                                           random_state=3,
+                                           n_jobs=-1)),
+            ('gbr', GradientBoostingClassifier(n_estimators=20,
+                                               max_depth=2,
+                                               subsample=.6,
+                                               learning_rate=.01,
+                                               random_state=4))
+        ]
+
+        # Go through classifiers
+        predictors_probas = np.zeros((len(dataset.data), len(classifiers) * n_classes))
+
+        for reg_i, (name, reg) in enumerate(classifiers):
+            # Fit the classifier
+            reg.fit(dataset.data, dataset.target)
+            # Predict labels and probas data
+            predictors_probas[:, reg_i * n_classes: (reg_i + 1) * n_classes] = reg.predict_proba(dataset.data)
+
+        print(predictors_probas[:5, :])
+        # Use stacker
+        stacker = MultiLabelClassificationLinearPredictorStacker(metric=log_loss, verbose=2, max_iter=100, seed=0)
+        stacker.fit(predictors=predictors_probas, target=dataset.target)
+        self.assertAlmostEqual(2.94e-5,
+                               log_loss(dataset.target, stacker.predict_proba(predictors=predictors_probas)),
+                               places=5)
+        self.assertAlmostEqual(1.0, accuracy_score(dataset.target, stacker.predict(predictors=predictors_probas)))
+
+    def test_not_fitted_error(self):
+        stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss)
+        self.assertRaises(ValueError, stacker.predict)
+
+    def test_bad_type_for_predictors_error(self):
+        stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss)
+        self.assertRaises(ValueError, stacker.fit, predictors=pd.Series([1, 2, 3]) , target=np.array([1, 2, 3]))
+
+    def test_bad_type_for_target_error(self):
+        stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss)
+        self.assertRaises(ValueError, stacker.fit, predictors=np.array([[1, 2], [2, 3]]), target=pd.DataFrame([1, 2]))

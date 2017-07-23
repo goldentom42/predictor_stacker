@@ -2,7 +2,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn import __version__ as sklearn_version
 from sklearn.linear_model import RidgeClassifier, LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier
-from sklearn.metrics import log_loss, accuracy_score
+from sklearn.metrics import log_loss, accuracy_score, roc_auc_score, f1_score
 import pandas as pd
 import numpy as np
 from linear_stacker import BinaryClassificationLinearPredictorStacker
@@ -65,128 +65,84 @@ def main():
         # Display OOF score
         print("Accuracy for classifier %6s : %.5f" % (name, accuracy_score(dataset.target, oof_labels[:, reg_i])))
         print("Log_loss for classifier %6s : %.5f" % (name, log_loss(dataset.target, oof_probas[:, reg_i])))
+        print("Roc_auc  for classifier %6s : %.5f" % (name, roc_auc_score(dataset.target, oof_probas[:, reg_i])))
 
     # Stacking using labels
     print('Stacking using labels \n'
           '=====================')
     print("\tLog loss Benchmark using labels' average : %.5f" % (log_loss(dataset.target, np.mean(oof_labels, axis=1))))
 
-    # Linear Stacker with labels, normed weights
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='standard',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=True,
-                                                         step=0.01)
+    stackers = [
+        # Linear Stacker with labels, normed weights
+        ('Standard Linear Stacker (normed weights)',
+         BinaryClassificationLinearPredictorStacker(metric=log_loss,
+                                                    algo='standard',
+                                                    max_iter=1000,
+                                                    verbose=0,
+                                                    normed_weights=True,
+                                                    # step=0.01
+                                                    )),
+        # Linear Stacker with labels, no weight constraint
+        ('Standard Linear Stacker (no constraint)',
+         BinaryClassificationLinearPredictorStacker(metric=log_loss,
+                                                    algo='standard',
+                                                    max_iter=1000,
+                                                    verbose=0,
+                                                    normed_weights=False,
+                                                    # step=0.01
+                                                    )),
+        # Linear Stacker with labels normed weights swapping algo
+        ('Swapping Linear Stacker (normed weights)',
+         BinaryClassificationLinearPredictorStacker(metric=log_loss,
+                                                    algo='swapping',
+                                                    max_iter=1000,
+                                                    verbose=0,
+                                                    normed_weights=True,
+                                                    # step=0.01
+                                                    )),
+        # Linear Stacker with labels no weights constraints swapping algo
+        ('Swapping Linear Stacker (no constraint)',
+         BinaryClassificationLinearPredictorStacker(metric=log_loss,
+                                                    algo='swapping',
+                                                    max_iter=1000,
+                                                    verbose=0,
+                                                    normed_weights=False,
+                                                    # step=0.01
+                                                    ))
+    ]
 
-    stacker.fit(pd.DataFrame(oof_labels, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Standard Linear Stacker (normed weights): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_labels))))
-
-    # Linear Stacker with labels, no weight constraint
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='standard',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=False,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_labels, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Standard Linear Stacker (no constraint): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_labels))))
-
-    # Linear Stacker with labels normed weights swapping algo
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='swapping',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=True,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_labels, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Swapping Linear Stacker (normed weights): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_labels))))
-
-    # Linear Stacker with labels no weights constraints swapping algo
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='swapping',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=False,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_labels, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Swapping Linear Stacker (no constraint): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_labels))))
+    for description, stacker in stackers:
+        # Fit stacker
+        stacker.fit(pd.DataFrame(oof_labels, columns=[name for (name, _) in classifiers]),
+                    pd.Series(dataset.target, name='target'))
+        # display results
+        print("\tAccuracy  %s: %.5f"
+              % (description, accuracy_score(dataset.target, stacker.predict(oof_labels))))
+        print("\tF1_score  %s: %.5f"
+              % (description, f1_score(dataset.target, stacker.predict(oof_labels))))
+        print("\tLog loss  %s: %.5f"
+              % (description, log_loss(dataset.target, stacker.predict_proba(oof_labels))))
+        print("\tAUC score %s: %.5f"
+              % (description, roc_auc_score(dataset.target, stacker.predict_proba(oof_labels))))
 
     # Stacking using labels
     print('Stacking using probabilities \n'
           '============================')
     print("\tLog loss Benchmark using probas' average : %.5f" % (log_loss(dataset.target, np.mean(oof_probas, axis=1))))
 
-    # Linear Stacker with labels, normed weights
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='standard',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=True,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_probas, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Standard Linear Stacker (normed weights): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_probas))))
-
-    # Linear Stacker with labels, no weight constraint
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='standard',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=False,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_probas, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Standard Linear Stacker (no constraint): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_probas))))
-
-    # Linear Stacker with labels normed weights swapping algo
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='swapping',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=True,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_probas, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Swapping Linear Stacker (normed weights): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_probas))))
-
-    # Linear Stacker with labels no weights constraints swapping algo
-    stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss,
-                                                         algo='swapping',
-                                                         max_iter=1000,
-                                                         verbose=0,
-                                                         normed_weights=False,
-                                                         step=0.01)
-
-    stacker.fit(pd.DataFrame(oof_probas, columns=[name for (name, _) in classifiers]),
-                pd.Series(dataset.target, name='target'))
-
-    print("\tLog loss Swapping Linear Stacker (no constraint): %.5f"
-          % (log_loss(dataset.target, stacker.predict_proba(oof_probas))))
+    for description, stacker in stackers:
+        # Fit stacker
+        stacker.fit(pd.DataFrame(oof_probas, columns=[name for (name, _) in classifiers]),
+                    pd.Series(dataset.target, name='target'))
+        # display results
+        print("\tAccuracy  %s: %.5f"
+              % (description, accuracy_score(dataset.target, stacker.predict(oof_probas))))
+        print("\tF1_score  %s: %.5f"
+              % (description, f1_score(dataset.target, stacker.predict(oof_probas))))
+        print("\tLog loss  %s: %.5f"
+              % (description, log_loss(dataset.target, stacker.predict_proba(oof_probas))))
+        print("\tAUC score %s: %.5f"
+              % (description, roc_auc_score(dataset.target, stacker.predict_proba(oof_probas))))
 
 if __name__ == '__main__':
     main()
