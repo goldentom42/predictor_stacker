@@ -420,44 +420,11 @@ class LinearPredictorStacker(object):
             improve = True
             iter_ = 0
             while improve and (iter_ < self.max_iter):
-                best_score = benchmark
-                best_swap = (0, 0)
-                # Try to modify weights
-                for the_step in [step]:
-                    candidate_weights = weights.copy()
-                    for i in range(len(weights)):
-                        candidate_weights_i = candidate_weights.copy()
-                        # Do not go under 0 or above 1
-                        # if (candidate_weights_i[i] <= 0) and the_step < 0:
-                        #    continue
-                        # if (candidate_weights_i[i] >= 1) and the_step > 0:
-                        #    continue
-                        # Modify current weight and initialize counter weight
-                        candidate_weights_i[i] += the_step
-                        counter_step = -the_step
-                        # Now find a weight to counter modify
-                        for j in range(len(weights)):
-                            # print(i, j)
-                            candidate_weights_j = candidate_weights_i.copy()
-                            if j == i:
-                                continue
-                            # Do not go under 0 or above 1
-                            # if (candidate_weights_j[j] <= 0) and counter_step < 0:
-                            #    continue
-                            # if (candidate_weights_j[j] >= 1) and counter_step > 0:
-                            #    continue
-                            candidate_weights_j[j] += counter_step
-                            # Compute candidate_weights score
-                            candidate_pred = self._compute_prediction(predictors=bag_predictors,
-                                                                      weights=candidate_weights_j)
-
-                            # compute score
-                            candidate_score = self.metric(bag_target, candidate_pred)
-                            # Update best params
-                            if self._check_score_improvement(benchmark=best_score, score=candidate_score):
-                                best_score = candidate_score
-                                best_swap = (i, j)
-                                best_step = the_step
+                best_score, best_step, best_swap = self._search_best_pair_swap_candidate(bag_predictors,
+                                                                                         bag_target,
+                                                                                         benchmark,
+                                                                                         step,
+                                                                                         weights)
 
                 if self._check_score_improvement(benchmark=benchmark, score=best_score):
                     improve = True
@@ -490,9 +457,10 @@ class LinearPredictorStacker(object):
                 iter_ += 1
 
             # Print current bag score
-            last_prediction = np.zeros(nb_samp)
-            for i in range(len(weights)):
-                last_prediction += weights[i] * bag_predictors[:, i]
+            last_prediction = self._compute_prediction(predictors=bag_predictors, weights=weights)
+            # last_prediction = np.zeros(nb_samp)
+            # for i in range(len(weights)):
+            #     last_prediction += weights[i] * bag_predictors[:, i]
             if self.verbose >= 1:
                 print('Bag ' + str(bag) + ' final score : ', self.metric(bag_target, last_prediction))
 
@@ -506,6 +474,48 @@ class LinearPredictorStacker(object):
 
         self.score = self.metric(self.target, bagged_prediction)
         self.fitted = True
+
+    def _search_best_pair_swap_candidate(self, bag_predictors, bag_target, benchmark, step, weights):
+        best_score = benchmark
+        best_swap = (0, 0)
+        best_step = None
+        # Try to modify weights
+        for the_step in [step]:
+            candidate_weights = weights.copy()
+            for i in range(len(weights)):
+                candidate_weights_i = candidate_weights.copy()
+                # Do not go under 0 or above 1
+                # if (candidate_weights_i[i] <= 0) and the_step < 0:
+                #    continue
+                # if (candidate_weights_i[i] >= 1) and the_step > 0:
+                #    continue
+                # Modify current weight and initialize counter weight
+                candidate_weights_i[i] += the_step
+                counter_step = -the_step
+                # Now find a weight to counter modify
+                for j in range(len(weights)):
+                    # print(i, j)
+                    candidate_weights_j = candidate_weights_i.copy()
+                    if j == i:
+                        continue
+                    # Do not go under 0 or above 1
+                    # if (candidate_weights_j[j] <= 0) and counter_step < 0:
+                    #    continue
+                    # if (candidate_weights_j[j] >= 1) and counter_step > 0:
+                    #    continue
+                    candidate_weights_j[j] += counter_step
+                    # Compute candidate_weights score
+                    candidate_pred = self._compute_prediction(predictors=bag_predictors,
+                                                              weights=candidate_weights_j)
+
+                    # compute score
+                    candidate_score = self.metric(bag_target, candidate_pred)
+                    # Update best params
+                    if self._check_score_improvement(benchmark=best_score, score=candidate_score):
+                        best_score = candidate_score
+                        best_swap = (i, j)
+                        best_step = the_step
+        return best_score, best_step, best_swap
 
     def get_weights(self):
         return tuple(self.weights)
@@ -610,7 +620,6 @@ class MultiLabelClassificationLinearPredictorStacker(object):
         self.labels = sorted(np.unique(labeled_target))
 
         # Go through labels for one vs all binary classification
-        label_probas = np.zeros((len(target), len(self.labels)))
         self.labels_weights = np.zeros((predictors.shape[1], len(self.labels)))
         for i_lab, label in enumerate(self.labels):
             # Make binary target for current label
@@ -642,7 +651,7 @@ class MultiLabelClassificationLinearPredictorStacker(object):
 
     def predict_proba(self, predictors=None):
         label_probas = np.zeros((len(predictors), len(self.labels)))
-        for i_lab, label in enumerate(self.labels):
+        for i_lab in range(len(self.labels)):
             label_probas[:, i_lab] = self.label_stackers[i_lab].predict_proba(predictors)
             # Return probas making sure everything sum to 1
         return label_probas / np.sum(label_probas, axis=1).reshape(-1, 1)
