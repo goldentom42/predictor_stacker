@@ -71,8 +71,7 @@ def main():
                                                algo='standard',
                                                max_iter=100,
                                                verbose=0,
-                                               normed_weights=False,
-                                               step=.05)
+                                               normed_weights=False)
 
     stacker.fit(pd.DataFrame(oof_preds, columns=[name for (name, _) in regressors]),
                 pd.Series(dataset.target, name='target'))
@@ -84,8 +83,7 @@ def main():
                                                algo='swapping',
                                                max_iter=100,
                                                verbose=0,
-                                               normed_weights=True,
-                                               step=1)
+                                               normed_weights=True)
 
     stacker.fit(pd.DataFrame(oof_preds, columns=[name for (name, _) in regressors]),
                 pd.Series(dataset.target, name='target'))
