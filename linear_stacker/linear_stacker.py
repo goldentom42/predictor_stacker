@@ -2,22 +2,26 @@ from __future__ import division
 import os.path
 import pandas as pd
 import numpy as np
-
+from sklearn.preprocessing import MinMaxScaler
 #np.set_printoptions(precision=2)
 
 
 class LinearPredictorStacker(object):
+    STANDARD = 0
+    SWAPPING = 1
+
     def __init__(self,
                  metric=None,
                  maximize=False,
-                 algo='standard',
-                 max_predictors=1.0,
-                 max_samples=1.0,
+                 algorithm=STANDARD,
+                 colsample=1.0,
+                 subsample=1.0,
                  n_bags=1,
                  max_iter=10,
                  verbose=0,
                  verb_round=1,
                  normed_weights=True,
+                 probabilities=False,
                  eps=1e-5,
                  seed=None):
         """
@@ -37,25 +41,27 @@ class LinearPredictorStacker(object):
         :param verbose: overall verbosity of the optimization process, defaults to 0
         :param verb_round: if verbose is more than 1, verb_round sets the number of rounds after which info is output
         :param normed_weights: set to True if predictors' weights have to sum to 1, defaults to True
+        :param probabilities: set to True if predictor's output must be between 0 and 1
         :param eps: tolerance for optimization improvement, defaults to 1e-5
         :param seed: used to seed random processes
         """
 
         if metric is None:
             raise ValueError('No metric has been provided')
-        if algo not in ['swapping', 'standard']:
+        if algorithm not in [self.STANDARD, self.SWAPPING]:
             raise ValueError('Algorithm must be either "standard" or "swapping"')
 
         self.metric = metric
         self.maximize = maximize
-        self.algo = algo
-        self.max_predictors = max_predictors
-        self.max_samples = max_samples
+        self.algo = algorithm
+        self.max_predictors = colsample
+        self.max_samples = subsample
         self.n_bags = n_bags
         self.max_iter = max_iter
         self.verbose = verbose
         self.verb_round = verb_round
         self.normed_weights = normed_weights
+        self.probabilities = probabilities
         self.eps = eps
         self.seed = seed
 
@@ -165,24 +171,27 @@ class LinearPredictorStacker(object):
                 raise ValueError('predictors and target must be set before fitting')
 
         # Check algo
-        if self.algo == 'standard':
+        if self.algo == LinearPredictorStacker.STANDARD:
             self._standard_fit()
-        elif self.algo == 'swapping':
+        elif self.algo == LinearPredictorStacker.SWAPPING:
             self._swapping_fit()
 
     def _standard_fit(self):
         """
         Standard optimization process.
 
-        At each round each predictor is either added or subtracted to to the overall prediction and overall score
-        improvement is tested. The best operation is kept.
+        At each round :
+        - A portion (step) of each predictor is either added or subtracted to the overall prediction
+        - Overall score improvement is tested.
+        - The best operation is kept.
         """
+
         self.fitted = False
 
-        # Compute mean score
+        # Create a benchmark score with predictors mean
         self.mean_score = self.metric(self.target, self.predictors.mean(axis=1).values)
 
-        # Create samples and predictors indexes
+        # Create samples and predictors indexes, this is used for bagging purposes
         samp_indexes = np.arange(self.predictors.shape[0])
         pred_indexes = np.arange(self.predictors.shape[1])
 
@@ -202,7 +211,7 @@ class LinearPredictorStacker(object):
             np.random.shuffle(samp_indexes)
             np.random.shuffle(pred_indexes)
 
-            # Get bagged predictors
+            # Get bagged predictors (without replacement)
             nb_pred = int(self.predictors.shape[1] * self.max_predictors)
             nb_samp = int(self.predictors.shape[0] * self.max_samples)
             pred_idx = pred_indexes[:nb_pred]
@@ -339,6 +348,9 @@ class LinearPredictorStacker(object):
             for i, weight in enumerate(weights):
                 prediction += weight * predictors[:, i]
 
+        if self.probabilities:
+            prediction = np.clip(prediction, 1e-10, 1 - 1e-10)
+
         return prediction
 
     def _transform(self, data):
@@ -435,14 +447,15 @@ class LinearPredictorStacker(object):
                     # Compute prediction
                     prediction = self._compute_prediction(predictors=bag_predictors, weights=weights)
 
+
                     # Compute new benchmark and display if required
                     benchmark = self.metric(bag_target, prediction)
                     if self.verbose >= 2 and (iter_ % self.verb_round == 0):
-                        print('Round %6d benchmark for feature %20s / %20s : %13.6f'
+                        print('Round %6d benchmark replacing %-20s by %-20s : %13.6f'
                               # % (iter_, features[best_swap[0]], features[best_swap[1]], benchmark), best_step)
                               % (iter_,
-                                 features[pred_idx[best_swap[0]]],
                                  features[pred_idx[best_swap[1]]],
+                                 features[pred_idx[best_swap[0]]],
                                  benchmark), best_step)
                 else:
                     # Decrease step size in case no improvement is found
@@ -529,9 +542,73 @@ class BinaryClassificationLinearPredictorStacker(LinearPredictorStacker):
     Note that Stacker raw output is probability based.
     """
 
+    def __init__(self,
+                 metric=None,
+                 maximize=False,
+                 algorithm=LinearPredictorStacker.STANDARD,
+                 colsample=1.0,
+                 subsample=1.0,
+                 n_bags=1,
+                 max_iter=10,
+                 verbose=0,
+                 verb_round=1,
+                 normed_weights=True,
+                 eps=1e-5,
+                 seed=None):
+        super(BinaryClassificationLinearPredictorStacker, self).__init__(
+            metric=metric,
+            maximize=maximize,
+            algorithm=algorithm,
+            colsample=colsample,
+            subsample=subsample,
+            n_bags=n_bags,
+            max_iter=max_iter,
+            probabilities=True,
+            verbose=verbose,
+            verb_round=verb_round,
+            normed_weights=normed_weights,
+            eps=eps,
+            seed=seed
+        )
+
     def predict_proba(self, predictors=None):
         """Apply linear stacker to predictors and make sure probabilities are in [0, 1]"""
         return np.clip(self._transform(predictors), 1e-6, 1 - 1e-6)
+
+    def predict(self, predictors=None, threshold=.5):
+        """
+        Apply linear stacker to predictors and then assign label against a threshold
+        :param predictors: set of predictors to be merged
+         number of predictors should be the same as the set used to train the stacker
+        :param threshold: threshold used to assign binary label. defaults to .5
+        :return: weighted sum of predictors
+        """
+        # Get probabilities
+        probas = self.predict_proba(predictors)
+        # Apply threshold to decide label
+        probas[probas >= threshold] = 1
+        probas[probas < threshold] = 0
+        return probas
+
+
+class BinaryRankingLinearPredictorStacker(LinearPredictorStacker):
+    """
+    Binary Ranking Linear Stacker computes the best weights to linearly merge predictors
+    against a ranking metric.
+    This is suitable for AUC or Gini
+
+    Note that Stacker raw output is probability based.
+    """
+
+    def predict_proba(self, predictors=None):
+        """
+        Apply linear stacker to predictors and make sure probabilities are in [0, 1]
+        Since we are in a ranking problem the output of the satcker can be out of [0, 1]
+        In a classification problem using logloss for example probabilities are constraint in 0, 1
+        But for AUC or Gini only ranking is important so we can use MinMaxScaler
+        """
+        skl = MinMaxScaler(feature_range=(1e-6, 1 - 1e-6))
+        return skl.fit_transform(self._transform(predictors).reshape(-1, 1))[:, 0]
 
     def predict(self, predictors=None, threshold=.5):
         """
@@ -568,8 +645,8 @@ class MultiLabelClassificationLinearPredictorStacker(object):
     def __init__(self,
                  metric=None,
                  maximize=False,
-                 max_predictors=1.0,
-                 max_samples=1.0,
+                 colsample=1.0,
+                 subsample=1.0,
                  n_bags=1,
                  max_iter=10,
                  verbose=0,
@@ -582,10 +659,10 @@ class MultiLabelClassificationLinearPredictorStacker(object):
             raise ValueError('No metric has been provided')
 
         self.metric = metric
-        self.algo = 'swapping'
+        self.algo = LinearPredictorStacker.SWAPPING
         self.maximize = maximize
-        self.max_predictors = max_predictors
-        self.max_samples = max_samples
+        self.max_predictors = colsample
+        self.max_samples = subsample
         self.n_bags = n_bags
         self.max_iter = max_iter
         self.verbose = verbose
@@ -631,9 +708,9 @@ class MultiLabelClassificationLinearPredictorStacker(object):
             # Istantiate a Binary Stacker
             stacker = BinaryClassificationLinearPredictorStacker(metric=self.metric,
                                                                  maximize=self.maximize,
-                                                                 algo=self.algo,
-                                                                 max_predictors=self.max_predictors,
-                                                                 max_samples=self.max_samples,
+                                                                 algorithm=self.algo,
+                                                                 colsample=self.max_predictors,
+                                                                 subsample=self.max_samples,
                                                                  n_bags=self.n_bags,
                                                                  max_iter=self.max_iter,
                                                                  verbose=self.verbose,

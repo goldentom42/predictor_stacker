@@ -48,7 +48,7 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(stacker.weights, None)
         self.assertEqual(stacker.score, None)
         self.assertEqual(stacker.maximize, False)
-        self.assertEqual(stacker.algo, 'standard')
+        self.assertEqual(stacker.algo, LinearPredictorStacker.STANDARD)
         self.assertEqual(stacker.max_predictors, 1.0)
         self.assertEqual(stacker.max_samples, 1.0)
         self.assertEqual(stacker.n_bags, 1)
@@ -103,8 +103,8 @@ class TestPredictorStacker(unittest.TestCase):
         stacker = LinearPredictorStacker(metric=metric_mae,
                                          max_iter=20,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=0)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
@@ -122,8 +122,8 @@ class TestPredictorStacker(unittest.TestCase):
         stacker = LinearPredictorStacker(metric=metric_rmse,
                                          max_iter=182,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=0)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
@@ -141,8 +141,8 @@ class TestPredictorStacker(unittest.TestCase):
         stacker = LinearPredictorStacker(metric=metric_rmse,
                                          max_iter=250,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=0)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
@@ -158,11 +158,11 @@ class TestPredictorStacker(unittest.TestCase):
     def test_swapping_fit_regression_stacker_rmse_no_bagging(self):
         """Test regression stacking with metric root mean squared error, no bagging"""
         stacker = LinearPredictorStacker(metric=metric_rmse,
-                                         algo='swapping',
+                                         algorithm=LinearPredictorStacker.SWAPPING,
                                          max_iter=20,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=0)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
@@ -177,11 +177,11 @@ class TestPredictorStacker(unittest.TestCase):
     def test_swapping_fit_regression_stacker_rmse_10_bags(self):
         """Test regression stacking with metric root mean squared error, no bagging"""
         stacker = LinearPredictorStacker(metric=metric_rmse,
-                                         algo='swapping',
+                                         algorithm=LinearPredictorStacker.SWAPPING,
                                          max_iter=20,
                                          n_bags=10,
-                                         max_predictors=.8,
-                                         max_samples=.8,
+                                         colsample=.8,
+                                         subsample=.8,
                                          verbose=0,
                                          seed=0)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
@@ -199,8 +199,8 @@ class TestPredictorStacker(unittest.TestCase):
         stacker = LinearPredictorStacker(metric=metric_mae,
                                          max_iter=10,
                                          n_bags=20,
-                                         max_predictors=.8,
-                                         max_samples=.8,
+                                         colsample=.8,
+                                         subsample=.8,
                                          seed=24698537)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
@@ -216,14 +216,15 @@ class TestPredictorStacker(unittest.TestCase):
     def test_fit_swapping_regression_stacker_no_bagging_normed_weights(self):
         """Test regression stacking with metric mean absolute error, no bagging"""
         stacker = LinearPredictorStacker(metric=metric_mae,
-                                         algo='swapping',
+                                         algorithm=LinearPredictorStacker.SWAPPING,
                                          normed_weights=True,
                                          max_iter=2000,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=2,
-                                         eps=1e-3)
+                                         eps=1e-3,
+                                         seed=11)
         stacker.add_predictors_by_filename(files=[get_path('noid_OOF_predictions_2.csv'),
                                                   get_path('noid_OOF_predictions_3.csv'),
                                                   get_path('noid_OOF_predictions_4.csv')])
@@ -231,18 +232,18 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertEqual(len(stacker.predictors), 1000)
         self.assertEqual(stacker.predictors.shape[1], 22)
         stacker.fit()
-        self.assertAlmostEqual(stacker.score, 1156.5085876533767, places=4)
+        self.assertAlmostEqual(stacker.score, 1156.3066, places=4)
         self.assertAlmostEqual(stacker.mean_score, 1188.5725272161117, places=4)
 
     def test_standard_fit_regression_stacker_no_bagging_free_weights(self):
         """Test regression stacking with metric mean absolute error, no bagging"""
         stacker = LinearPredictorStacker(metric=metric_mae,
-                                         algo='standard',
+                                         algorithm=LinearPredictorStacker.STANDARD,
                                          normed_weights=False,
                                          max_iter=200,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=2,
                                          eps=1e-3,
                                          seed=0)
@@ -259,18 +260,18 @@ class TestPredictorStacker(unittest.TestCase):
 
     def test_unsupported_algorithm(self):
         """Test unsupported algorithm"""
-        self.assertRaises(ValueError, LinearPredictorStacker, metric=metric_rmse, algo='unsupported')
+        self.assertRaises(ValueError, LinearPredictorStacker, metric=metric_rmse, algorithm='unsupported')
 
     def test_fit_with_predictors_and_target(self):
         data = pd.read_csv(get_path('noid_OOF_predictions_2.csv'))
         target = data.loss
         data.drop(['loss'], axis=1, inplace=True)
         stacker = LinearPredictorStacker(metric=metric_rmse,
-                                         algo='swapping',
+                                         algorithm=LinearPredictorStacker.SWAPPING,
                                          max_iter=200,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=0)
         stacker.fit(predictors=data, target=target)
         self.assertAlmostEqual(stacker.score, 1969.3946377360355, places=4)
@@ -302,11 +303,11 @@ class TestPredictorStacker(unittest.TestCase):
         target = data.loss
         data.drop(['loss'], axis=1, inplace=True)
         stacker = LinearPredictorStacker(metric=metric_rmse,
-                                         algo='swapping',
+                                         algorithm=LinearPredictorStacker.SWAPPING,
                                          max_iter=20,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=0)
         # Predictors and target do not have same length
         self.assertRaises(ValueError, stacker.fit, predictors=data, target=target.head(100))
@@ -347,9 +348,9 @@ class TestPredictorStacker(unittest.TestCase):
             print('reg %s mse %.5f' % (name, mean_squared_error(y_full, predictors[:, i_reg])))
 
         # Now use regression stacker
-        stacker = RegressionLinearPredictorStacker(metric=mean_squared_error)
+        stacker = RegressionLinearPredictorStacker(metric=mean_squared_error, seed=1)
         stacker.fit(pd.DataFrame(predictors), pd.Series(y_full))
-        self.assertAlmostEqual(1.2202887, mean_squared_error(y_full, stacker.predict(predictors)), places=5)
+        self.assertAlmostEqual(1.2207246, mean_squared_error(y_full, stacker.predict(predictors)), places=5)
 
     def get_classifier_predictors(self):
         # For a more appropriate way to use predition stacking see the examples
@@ -387,7 +388,7 @@ class TestPredictorStacker(unittest.TestCase):
     def test_several_fits_classification(self):
         predictors, target = self.get_classifier_predictors()
         stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss, max_iter=35, verbose=2,
-                                                             algo='swapping', normed_weights=False)
+                                                             algorithm=LinearPredictorStacker.SWAPPING, normed_weights=False)
         # first fit
         stacker.fit(pd.DataFrame(predictors), pd.Series(target))
         self.assertAlmostEqual(0.00018589380467956424, log_loss(target, stacker.predict_proba(predictors)), places=5)
@@ -398,7 +399,7 @@ class TestPredictorStacker(unittest.TestCase):
         self.assertAlmostEqual(1.0, accuracy_score(target, stacker.predict(predictors)), places=2)
 
         stacker = BinaryClassificationLinearPredictorStacker(metric=log_loss, max_iter=35, verbose=2,
-                                                             algo='standard', normed_weights=False)
+                                                             algorithm=LinearPredictorStacker.STANDARD, normed_weights=False)
         # first fit
         stacker.fit(pd.DataFrame(predictors), pd.Series(target))
         self.assertAlmostEqual(0.00025499752810984901, log_loss(target, stacker.predict_proba(predictors)), places=5)
@@ -411,12 +412,12 @@ class TestPredictorStacker(unittest.TestCase):
     def test_regression_r2_score_maximization(self):
         stacker = LinearPredictorStacker(metric=r2_score,
                                          maximize=True,
-                                         algo='standard',
+                                         algorithm=LinearPredictorStacker.STANDARD,
                                          normed_weights=False,
                                          max_iter=200,
                                          n_bags=1,
-                                         max_predictors=1.,
-                                         max_samples=1.,
+                                         colsample=1.,
+                                         subsample=1.,
                                          verbose=2,
                                          eps=1e-4,
                                          seed=0)
